@@ -135,9 +135,62 @@
                     </dl>
 
                     {{-- Evidence --}}
+                    @php $ev = $d->evidence ?? []; @endphp
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1">Bukti</p>
-                        <pre class="text-xs bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-lg p-3 overflow-x-auto text-neutral-700 dark:text-neutral-300">{{ json_encode($d->evidence, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Bukti</p>
+
+                        {{-- Judol post links: clickable ?p=ID to the live page --}}
+                        @if (! empty($ev['samples']))
+                            <div class="mb-3">
+                                <p class="text-xs text-neutral-600 dark:text-neutral-300 mb-1">
+                                    {{ $ev['published_judol_posts'] ?? count($ev['samples']) }} postingan judi online terbit
+                                    @if (($ev['published_judol_posts'] ?? 0) > count($ev['samples']))
+                                        <span class="text-neutral-400">(menampilkan {{ count($ev['samples']) }} contoh)</span>
+                                    @endif
+                                </p>
+                                <ul class="space-y-1.5">
+                                    @foreach ($ev['samples'] as $s)
+                                        <li class="text-sm">
+                                            <div class="text-neutral-800 dark:text-neutral-100 truncate">{{ $s['title'] ?? '—' }}</div>
+                                            @if (! empty($s['url']))
+                                                <a href="{{ $s['url'] }}" target="_blank" rel="noopener noreferrer"
+                                                    class="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline break-all">
+                                                    <x-lucide-external-link class="size-3 shrink-0" />
+                                                    {{ $s['url'] }}
+                                                </a>
+                                            @endif
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        {{-- Other signals as readable lines --}}
+                        @php
+                            $otherKeys = [
+                                'injected_posts' => 'Postingan dengan konten ter-inject',
+                                'suspicious_autoload_options' => 'Opsi autoload mencurigakan',
+                                'offsite_urls' => 'URL mengarah ke luar domain resmi',
+                                'recently_registered_admins' => 'Admin baru terdaftar (≤14 hari)',
+                                'admin_count' => 'Jumlah admin',
+                                'blogname' => 'Nama situs (blogname)',
+                                'note' => 'Catatan',
+                            ];
+                        @endphp
+                        @foreach ($otherKeys as $k => $label)
+                            @if (isset($ev[$k]) && $ev[$k] !== [] && $ev[$k] !== '')
+                                <div class="text-xs text-neutral-600 dark:text-neutral-300 mb-0.5">
+                                    <span class="text-neutral-400 dark:text-neutral-500">{{ $label }}:</span>
+                                    {{ is_array($ev[$k]) ? json_encode($ev[$k], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : $ev[$k] }}
+                                </div>
+                            @endif
+                        @endforeach
+
+                        {{-- Raw evidence (collapsible, for completeness) --}}
+                        <details class="mt-2">
+                            <summary class="text-xs text-neutral-400 dark:text-neutral-500 cursor-pointer hover:text-neutral-600 dark:hover:text-neutral-300">Data mentah</summary>
+                            <pre class="text-xs bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-lg p-3 overflow-x-auto text-neutral-700 dark:text-neutral-300 mt-1">{{ json_encode($ev, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
+                        </details>
                     </div>
 
                     {{-- History --}}

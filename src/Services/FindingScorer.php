@@ -35,7 +35,9 @@ class FindingScorer
             //   ≥5 posts → ≥75 (critical), capped at 90
             $judolScore += min(90, 40 + $jp['count'] * 7);
             $judolEvidence['published_judol_posts'] = $jp['count'];
-            $judolEvidence['sample_titles'] = $jp['samples'];
+            // Each sample: {title, url}. url is a clickable ?p=ID link to the
+            // live judol page so the operator can verify in one click.
+            $judolEvidence['samples'] = $jp['samples'];
         }
 
         if (! empty($signals['blogname_judol'])) {

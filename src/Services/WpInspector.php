@@ -125,13 +125,16 @@ class WpInspector
 
     /**
      * Count published posts/pages whose title matches any keyword. Returns the
-     * count plus a few sample titles for the evidence trail. Keywords are
-     * matched as bound LIKE params (no interpolation).
+     * count plus up to 5 sample {title, url} pairs for the evidence trail so an
+     * operator can click straight through and verify. The URL uses WordPress's
+     * always-resolvable ?p=ID form against the site's home URL (works
+     * regardless of permalink structure). Keywords are bound LIKE params.
      *
      * @param  list<string>  $keywords
-     * @return array{count:int, samples:list<string>}
+     * @param  string  $home  the site's home/siteurl (for building ?p=ID links)
+     * @return array{count:int, samples:list<array{title:string, url:?string}>}
      */
-    public function publishedJudolPosts(string $db, string $prefix, array $keywords): array
+    public function publishedJudolPosts(string $db, string $prefix, array $keywords, string $home = ''): array
     {
         if (empty($keywords)) {
             return ['count' => 0, 'samples' => []];
@@ -154,10 +157,16 @@ class WpInspector
         $samples = [];
         if ($count > 0) {
             $rows = $this->conn->select(
-                "SELECT post_title FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND ({$where}) ORDER BY post_date DESC LIMIT 5",
+                "SELECT ID, post_title FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND ({$where}) ORDER BY post_date DESC LIMIT 5",
                 $bind
             );
-            $samples = array_map(fn ($r) => mb_substr((string) $r->post_title, 0, 120), $rows);
+            $base = rtrim($home, '/');
+            foreach ($rows as $r) {
+                $samples[] = [
+                    'title' => mb_substr((string) $r->post_title, 0, 120),
+                    'url' => $base !== '' ? $base.'/?p='.(int) $r->ID : null,
+                ];
+            }
         }
 
         return ['count' => $count, 'samples' => $samples];

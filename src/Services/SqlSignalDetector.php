@@ -91,6 +91,8 @@ class SqlSignalDetector
         $opts = $inspector->options($db, $prefix, ['siteurl', 'home', 'blogname']);
         $siteUrl = $opts['siteurl'] ?? ($opts['home'] ?? null);
         $blogname = $opts['blogname'] ?? null;
+        // Prefer home for public post links (siteurl can point at /wp).
+        $homeUrl = $opts['home'] ?? ($opts['siteurl'] ?? '');
 
         $signals = [];
 
@@ -110,7 +112,7 @@ class SqlSignalDetector
         $signals['offsite_urls'] = $offsite;
 
         // judol posts, injected content, suspicious options, admin stats.
-        $signals['judol_posts'] = $inspector->publishedJudolPosts($db, $prefix, $keywords);
+        $signals['judol_posts'] = $inspector->publishedJudolPosts($db, $prefix, $keywords, $homeUrl);
         $signals['injected_content'] = $inspector->injectedContentCount($db, $prefix);
         $signals['suspicious_options'] = $inspector->suspiciousOptionCount($db, $prefix);
         $signals['admin_stats'] = $inspector->adminStats($db, $prefix, $expectedSuffix);
