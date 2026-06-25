@@ -1,0 +1,53 @@
+{
+    "name": "nawasara/secscan",
+    "description": "Security threat detection for the Nawasara superapp — scans monitored MySQL databases (WordPress focus) for judol/gambling SEO spam, defacement, phishing, and malware indicators. Read-only: detect + alert, never remediate.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "nawasara",
+        "laravel",
+        "security",
+        "threat-detection",
+        "wordpress",
+        "malware",
+        "judol"
+    ],
+    "authors": [
+        {
+            "name": "Pringgo J. Saputro",
+            "email": "odyinggo@gmail.com",
+            "role": "Lead Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/nawasara/secscan/issues",
+        "source": "https://github.com/nawasara/secscan"
+    },
+    "require": {
+        "php": "^8.1",
+        "ext-pdo": "*",
+        "illuminate/support": "^10.0|^12.0",
+        "spatie/laravel-permission": "^6.0",
+        "nawasara/ui": "*",
+        "nawasara/sync": "*",
+        "nawasara/vault": "*",
+        "nawasara/alerting": "*",
+        "nawasara/database-monitor": "*",
+        "nawasara/registry": "*",
+        "livewire/livewire": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Nawasara\\Secscan\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Nawasara\\Secscan\\SecscanServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
