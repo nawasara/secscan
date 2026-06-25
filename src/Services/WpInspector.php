@@ -71,13 +71,34 @@ class WpInspector
         foreach ($tables as $t) {
             if (preg_match('/^(.*)options$/', $t, $m)) {
                 $p = $m[1];
-                if (isset($set[$p.'posts'], $set[$p.'users'])) {
+                if (isset($set[$p.'posts'], $set[$p.'users'])
+                    && $this->hasOptionColumns($db, $p.'options')) {
                     return $p;
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * Confirm a candidate options table is really a WordPress options table —
+     * it must have option_name + option_value columns. Some other CMSes ship a
+     * plain `options` table (with `posts`/`users` siblings) that would
+     * otherwise be mistaken for WP and crash the option queries.
+     */
+    protected function hasOptionColumns(string $db, string $table): bool
+    {
+        $cols = array_map(
+            fn ($r) => array_values((array) $r)[0],
+            $this->conn->select(
+                'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+                [$db, $table]
+            )
+        );
+        $cols = array_flip($cols);
+
+        return isset($cols['option_name'], $cols['option_value']);
     }
 
     /**

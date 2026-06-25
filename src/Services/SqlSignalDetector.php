@@ -35,23 +35,33 @@ class SqlSignalDetector
 
         $databases = $inspector->databases();
         $wpCount = 0;
+        $errors = 0;
         $findings = [];
 
         try {
             foreach ($databases as $db) {
-                $prefix = $inspector->wordpressPrefix($db);
-                if ($prefix === null) {
-                    continue;
-                }
-                $wpCount++;
+                // One malformed database must never abort the whole sweep —
+                // some schemas have WP-lookalike tables (e.g. a literal
+                // `options` table that isn't WordPress) that error on a real
+                // WP query. Isolate per database.
+                try {
+                    $prefix = $inspector->wordpressPrefix($db);
+                    if ($prefix === null) {
+                        continue;
+                    }
+                    $wpCount++;
 
-                $site = $this->scanWordpress($inspector, $db, $prefix);
-                foreach ($site['findings'] as $f) {
-                    $findings[] = array_merge([
-                        'db_name' => $db,
-                        'site_url' => $site['site_url'],
-                        'site_name' => $site['site_name'],
-                    ], $f);
+                    $site = $this->scanWordpress($inspector, $db, $prefix);
+                    foreach ($site['findings'] as $f) {
+                        $findings[] = array_merge([
+                            'db_name' => $db,
+                            'site_url' => $site['site_url'],
+                            'site_name' => $site['site_name'],
+                        ], $f);
+                    }
+                } catch (\Throwable $e) {
+                    $errors++;
+                    report($e);
                 }
             }
         } finally {
@@ -63,6 +73,7 @@ class SqlSignalDetector
         return [
             'scanned_total' => count($databases),
             'wordpress_total' => $wpCount,
+            'errors' => $errors,
             'findings' => $findings,
         ];
     }
