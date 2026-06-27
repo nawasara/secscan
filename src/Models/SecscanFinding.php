@@ -19,6 +19,7 @@ class SecscanFinding extends Model
     public const THREAT_PHISHING = 'phishing';
     public const THREAT_SPAM = 'spam';
     public const THREAT_MALWARE = 'malware';
+    public const THREAT_BACKDOOR = 'backdoor';
 
     public const STATUS_OPEN = 'open';
     public const STATUS_ACKNOWLEDGED = 'acknowledged';
@@ -64,6 +65,7 @@ class SecscanFinding extends Model
             self::THREAT_PHISHING => 'Phishing',
             self::THREAT_SPAM => 'SEO Spam',
             self::THREAT_MALWARE => 'Malware',
+            self::THREAT_BACKDOOR => 'Akun Backdoor',
         ];
     }
 

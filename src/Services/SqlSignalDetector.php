@@ -85,7 +85,8 @@ class SqlSignalDetector
      */
     protected function scanWordpress(WpInspector $inspector, string $db, string $prefix): array
     {
-        $keywords = (array) config('nawasara-secscan.judol_keywords', []);
+        $strong = (array) config('nawasara-secscan.judol_keywords_strong', []);
+        $weak = (array) config('nawasara-secscan.judol_keywords_weak', []);
         $expectedSuffix = (string) config('nawasara-secscan.expected_host_suffix', 'ponorogo.go.id');
 
         $opts = $inspector->options($db, $prefix, ['siteurl', 'home', 'blogname']);
@@ -96,9 +97,9 @@ class SqlSignalDetector
 
         $signals = [];
 
-        // blogname carrying gambling keywords = defacement-ish title.
+        // blogname carrying STRONG gambling keywords = defacement-ish title.
         $signals['blogname'] = $blogname;
-        $signals['blogname_judol'] = $this->matchesAny((string) $blogname, $keywords);
+        $signals['blogname_judol'] = $this->matchesAny((string) $blogname, $strong);
 
         // siteurl/home not on the expected gov domain → redirect hijack.
         $offsite = [];
@@ -111,8 +112,39 @@ class SqlSignalDetector
         $signals['redirect_hijack'] = ! empty($offsite);
         $signals['offsite_urls'] = $offsite;
 
-        // judol posts, injected content, suspicious options, admin stats.
-        $signals['judol_posts'] = $inspector->publishedJudolPosts($db, $prefix, $keywords, $homeUrl);
+        // --- Judol detection, two-tier ---
+        // Strong keywords (gacor/casino/scatter/…) flag on their own. Weak ones
+        // (judi online/slot online/…) also appear in legit Indonesian news, so
+        // they only count when corroborated by foreign script or a strong hit.
+        $strongHits = $inspector->matchedTitlePosts($db, $prefix, $strong, $homeUrl, 5);
+        $weakHits = $inspector->matchedTitlePosts($db, $prefix, $weak, $homeUrl, 5);
+
+        // Foreign script in any sample title = near-certain injection.
+        $foreign = false;
+        foreach (array_merge($strongHits['samples'], $weakHits['samples']) as $s) {
+            if ($this->hasForeignScript((string) ($s['title'] ?? ''))) {
+                $foreign = true;
+                break;
+            }
+        }
+        if (! config('nawasara-secscan.foreign_script_boost', true)) {
+            $foreign = false;
+        }
+
+        // Build the effective judol signal. Weak hits only contribute when
+        // corroborated (strong present OR foreign script) — otherwise an
+        // anti-gambling article ("Bahaya Judi Online") would false-positive.
+        $corroborated = $strongHits['count'] > 0 || $foreign;
+        $count = $strongHits['count'] + ($corroborated ? $weakHits['count'] : 0);
+        $samples = $strongHits['samples'];
+        if ($corroborated && count($samples) < 5) {
+            $samples = array_slice(array_merge($samples, $weakHits['samples']), 0, 5);
+        }
+
+        $signals['judol_posts'] = ['count' => $count, 'samples' => $samples];
+        $signals['judol_foreign'] = $foreign;
+        $signals['judol_strong_count'] = $strongHits['count'];
+
         $signals['injected_content'] = $inspector->injectedContentCount($db, $prefix);
         $signals['suspicious_options'] = $inspector->suspiciousOptionCount($db, $prefix);
         $signals['admin_stats'] = $inspector->adminStats($db, $prefix, $expectedSuffix);
@@ -122,6 +154,27 @@ class SqlSignalDetector
             'site_name' => $blogname,
             'findings' => $this->scorer->score($signals),
         ];
+    }
+
+    /**
+     * True if the text contains script outside the Latin + common-Indonesian
+     * range — Cyrillic, Greek, Arabic, CJK, or Turkish-specific letters
+     * (İ ı ş ğ). Legitimate OPD titles are Latin/Indonesian; foreign script in
+     * a gambling-keyword title is a strong "this is injected spam" signal.
+     */
+    protected function hasForeignScript(string $text): bool
+    {
+        if ($text === '') {
+            return false;
+        }
+
+        // Unicode blocks that should never appear in an Indonesian gov title.
+        if (preg_match('/[\x{0400}-\x{04FF}\x{0370}-\x{03FF}\x{0600}-\x{06FF}\x{4E00}-\x{9FFF}\x{0E00}-\x{0E7F}]/u', $text)) {
+            return true;
+        }
+
+        // Turkish dotted/dotless I + ş ğ (common in TR gambling spam here).
+        return (bool) preg_match('/[İıŞşĞğ]/u', $text);
     }
 
     /**

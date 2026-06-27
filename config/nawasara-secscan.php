@@ -20,19 +20,39 @@ return [
     |--------------------------------------------------------------------------
     | Judol / gambling keywords
     |--------------------------------------------------------------------------
-    | Matched against post titles, blognames, and (later) crawled page text.
-    | Lowercased substring match. Foreign-language gambling terms are strong
-    | signals on a *.go.id site. Keep this list maintainable — it is the core
-    | of the SQL detector. Word-boundary-ish terms (rtp) are space-padded by
-    | the detector to avoid matching inside ordinary words.
+    | Matched as WHOLE WORDS (MySQL 8 ICU \b boundary) against post titles.
+    | Substring matching false-positived on legit gov content (recon 2026-06-25):
+    | 'dewa'→"Dewan", 'judi'→"Iswahjudi"/anti-gambling articles, 'toto'→"Totokan".
+    |
+    | TWO TIERS:
+    |   strong — gambling vocabulary legit gov articles never use. A single
+    |            whole-word match flags the site.
+    |   weak   — phrases that DO appear in normal Indonesian news/education
+    |            ("Bahaya Judi Online", "waspada slot online"). Counted ONLY when
+    |            corroborated: foreign-script title OR a strong keyword also on
+    |            the same site. Alone they are ignored, so anti-gambling articles
+    |            don't false-positive.
     */
-    'judol_keywords' => [
-        'slot', 'gacor', 'maxwin', 'toto', 'togel', 'judi', 'casino', 'kasino',
-        'poker', 'rtp', 'pragmatic', 'sbobet', 'jackpot', 'scatter', 'dewa',
-        'zeus', 'olympus', 'mahjong', 'pulsa', 'depo', 'bonus new member',
-        'situs gacor', 'link alternatif', 'bandar', 'bet88', 'pgsoft',
-        'fortune', 'koi gate', 'sweet bonanza',
+    'judol_keywords_strong' => [
+        'gacor', 'maxwin', 'togel', 'casino', 'kasino', 'sbobet', 'pragmatic',
+        'scatter', 'olympus', 'mahjong', 'pgsoft', 'sweet bonanza',
+        'gates of olympus', 'situs gacor', 'slot gacor', 'rtp slot',
+        'zeus olympus', 'starlight princess',
     ],
+    'judol_keywords_weak' => [
+        'slot', 'judi online', 'judi slot', 'slot online', 'bonus new member',
+        'deposit pulsa', 'link alternatif',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Foreign-language booster
+    |--------------------------------------------------------------------------
+    | A judol keyword in a title that ALSO contains non-Indonesian/English
+    | script (Turkish, Greek, Cyrillic, etc.) is a very strong compromise
+    | signal — legit OPD posts are in Indonesian. Used by the scorer.
+    */
+    'foreign_script_boost' => env('SECSCAN_FOREIGN_BOOST', true),
 
     /*
     |--------------------------------------------------------------------------

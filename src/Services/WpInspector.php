@@ -124,41 +124,38 @@ class WpInspector
     }
 
     /**
-     * Count published posts/pages whose title matches any keyword. Returns the
-     * count plus up to 5 sample {title, url} pairs for the evidence trail so an
-     * operator can click straight through and verify. The URL uses WordPress's
-     * always-resolvable ?p=ID form against the site's home URL (works
-     * regardless of permalink structure). Keywords are bound LIKE params.
+     * Count published posts/pages whose title matches a keyword set, returning
+     * the count + up to `$limit` sample {title, url} pairs (clickable ?p=ID
+     * links that resolve regardless of permalink structure).
+     *
+     * One word-boundary REGEXP instead of N×LIKE — accurate ('dewa' no longer
+     * matches "Dewan") AND fast (single pass, no filesort). MySQL 8 ICU \b.
      *
      * @param  list<string>  $keywords
      * @param  string  $home  the site's home/siteurl (for building ?p=ID links)
      * @return array{count:int, samples:list<array{title:string, url:?string}>}
      */
-    public function publishedJudolPosts(string $db, string $prefix, array $keywords, string $home = ''): array
+    public function matchedTitlePosts(string $db, string $prefix, array $keywords, string $home = '', int $limit = 5): array
     {
         if (empty($keywords)) {
             return ['count' => 0, 'samples' => []];
         }
         $table = $this->quoteIdent($db).'.'.$this->quoteIdent($prefix.'posts');
-
-        $likes = [];
-        $bind = [];
-        foreach ($keywords as $kw) {
-            $likes[] = 'post_title LIKE ?';
-            $bind[] = '%'.trim($kw).'%';
-        }
-        $where = implode(' OR ', $likes);
+        $regex = $this->judolRegex($keywords);
+        $limit = max(1, $limit);
 
         $count = (int) $this->conn->scalar(
-            "SELECT COUNT(*) FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND ({$where})",
-            $bind
+            "SELECT COUNT(*) FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND post_title REGEXP ?",
+            [$regex]
         );
 
         $samples = [];
         if ($count > 0) {
+            // No ORDER BY — any matching rows are fine as evidence; avoiding the
+            // sort keeps this fast on huge post tables (tppkk: tens of thousands).
             $rows = $this->conn->select(
-                "SELECT ID, post_title FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND ({$where}) ORDER BY post_date DESC LIMIT 5",
-                $bind
+                "SELECT ID, post_title FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND post_title REGEXP ? LIMIT {$limit}",
+                [$regex]
             );
             $base = rtrim($home, '/');
             foreach ($rows as $r) {
@@ -170,6 +167,32 @@ class WpInspector
         }
 
         return ['count' => $count, 'samples' => $samples];
+    }
+
+    /**
+     * Build a single MySQL word-boundary REGEXP alternation from the keyword
+     * list, e.g. "[[:<:]](slot|casino|gates of olympus)[[:>:]]". Keywords are
+     * regex-escaped; spaces are kept literal (multi-word phrases work).
+     *
+     * @param  list<string>  $keywords
+     */
+    protected function judolRegex(array $keywords): string
+    {
+        $parts = [];
+        foreach ($keywords as $kw) {
+            $kw = trim((string) $kw);
+            if ($kw === '') {
+                continue;
+            }
+            // Escape regex metacharacters. MySQL 8 REGEXP is ICU (PCRE-like).
+            $parts[] = preg_quote($kw, null);
+        }
+
+        // MySQL 8 uses the ICU regex engine: \b is the word boundary. (The old
+        // POSIX [[:<:]]/[[:>:]] anchors were REMOVED in MySQL 8.0.4 and raise
+        // "Illegal argument to a regular expression".) \b before/after the
+        // alternation keeps "dewa" from matching inside "dewan".
+        return '\\b('.implode('|', $parts).')\\b';
     }
 
     /**
@@ -185,9 +208,11 @@ class WpInspector
     {
         $table = $this->quoteIdent($db).'.'.$this->quoteIdent($prefix.'posts');
 
+        // MySQL 8 ICU regex: \s (not POSIX [[:space:]]). Patterns kept tight so
+        // a plain PDF/page link doesn't trip the .php rule (recon false positive).
         $count = (int) $this->conn->scalar(
             "SELECT COUNT(*) FROM {$table} WHERE post_status = 'publish' AND ("
-            ."post_content REGEXP '<script[^>]*display:[[:space:]]*none' "
+            ."post_content REGEXP '<script[^>]*display:\\\\s*none' "
             ."OR post_content LIKE '%eval(base64_decode%' "
             ."OR post_content LIKE '%gzinflate(base64_decode%' "
             ."OR post_content REGEXP '/wp-content/uploads/[^\"'']+\\\\.php([?\"'' ]|$)'"
@@ -241,24 +266,41 @@ class WpInspector
         $admins = count($rows);
         $foreign = 0;
         $recent = 0;
-        $cutoff = now()->subDays(14);
+        $recentList = [];
+        $regDays = [];          // distinct YYYY-MM-DD on which admins registered recently
+        $cutoff = now()->subDays(30);
         foreach ($rows as $r) {
             $email = (string) ($r->user_email ?? '');
-            if ($email !== '' && stripos($email, $expectedSuffix) === false
-                && stripos($email, '@'.$expectedSuffix) === false) {
-                // Only count clearly-external if it isn't a gov address. Many
-                // legit admins use gmail though, so this stays a weak signal.
+            $isGov = $email !== ''
+                && (stripos($email, $expectedSuffix) !== false);
+            if ($email !== '' && ! $isGov) {
                 $foreign++;
             }
             if (! empty($r->user_registered) && $r->user_registered > $cutoff->toDateTimeString()) {
                 $recent++;
+                $recentList[] = [
+                    'email' => $email,
+                    'registered' => (string) $r->user_registered,
+                    'gov_email' => $isGov,
+                ];
+                $regDays[substr((string) $r->user_registered, 0, 10)] = true;
             }
         }
+
+        // Burst = several admins created within a tight window. A backdoor
+        // attacker mass-creates accounts; legit gov sites add admins one at a
+        // time over months. ≥3 new admins spanning ≤3 distinct days is a strong
+        // backdoor signal — especially when the emails are non-gov.
+        $recentNonGov = count(array_filter($recentList, fn ($a) => ! $a['gov_email']));
+        $burst = $recent >= 3 && count($regDays) <= 3;
 
         return [
             'admins' => $admins,
             'foreign_email_admins' => $foreign,
             'recent_admins' => $recent,
+            'recent_nongov_admins' => $recentNonGov,
+            'recent_admin_list' => array_slice($recentList, 0, 8),
+            'registration_burst' => $burst,
             'total_users' => $totalUsers,
         ];
     }

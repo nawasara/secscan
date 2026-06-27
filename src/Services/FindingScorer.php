@@ -27,17 +27,33 @@ class FindingScorer
         $judolEvidence = [];
 
         $jp = $signals['judol_posts'] ?? ['count' => 0, 'samples' => []];
+        $strongCount = (int) ($signals['judol_strong_count'] ?? 0);
         if ($jp['count'] > 0) {
-            // Published gambling-titled posts are a strong signal. A couple
-            // could be a one-off spam comment turned post; many published ones
-            // mean the site is actively compromised — push that to critical.
-            //   1 post   → 45 (warning)
-            //   ≥5 posts → ≥75 (critical), capped at 90
-            $judolScore += min(90, 40 + $jp['count'] * 7);
+            // Published gambling-titled posts (whole-word matched, so "dewan" /
+            // anti-gambling articles no longer false-positive). Strong keywords
+            // (casino/gacor/scatter/…) never appear in gov content, so even a
+            // single strong-keyword post is high-confidence — start at 70
+            // (critical). Weak-only matches that got here were already
+            // corroborated (foreign script / a strong hit on the same site).
+            if ($strongCount > 0) {
+                $judolScore += min(90, 65 + $strongCount * 4);
+            } else {
+                $judolScore += min(70, 45 + $jp['count'] * 5);
+            }
             $judolEvidence['published_judol_posts'] = $jp['count'];
+            if ($strongCount > 0) {
+                $judolEvidence['strong_keyword_posts'] = $strongCount;
+            }
             // Each sample: {title, url}. url is a clickable ?p=ID link to the
             // live judol page so the operator can verify in one click.
             $judolEvidence['samples'] = $jp['samples'];
+
+            // Foreign-script booster: titles in Turkish/Greek/Cyrillic etc. are
+            // near-certain spam injection on a *.go.id site → confident critical.
+            if (! empty($signals['judol_foreign'])) {
+                $judolScore = max($judolScore, 90);
+                $judolEvidence['foreign_script'] = true;
+            }
         }
 
         if (! empty($signals['blogname_judol'])) {
@@ -75,29 +91,45 @@ class FindingScorer
             $findings[] = $this->finalize(SecscanFinding::THREAT_MALWARE, $malwareScore, $malwareEvidence);
         }
 
-        // ---- SPAM/account anomaly (weak — admin signals) -------------------
-        // Admin counts are noisy; treat purely as a low-confidence 'spam'/account
-        // signal that never alerts on its own (capped below warning threshold).
+        // ---- BACKDOOR (admin-account anomaly) ------------------------------
+        // A burst of newly-created admin accounts is one of the strongest signs
+        // of a real compromise: an attacker mass-creates admins (often with
+        // gmail addresses, in one sitting) for persistence. Legit gov sites add
+        // admins one at a time over months. This used to be a weak 'spam' info
+        // signal; real prod data (ponorogokab: 5 gmail admins created in ~2 days
+        // — adminbackup@gmail.com etc.) showed it deserves to be loud.
         $admin = $signals['admin_stats'] ?? null;
         if ($admin) {
-            $accountScore = 0;
-            $accountEvidence = [];
-            if (($admin['recent_admins'] ?? 0) > 0) {
-                $accountScore += 20 * $admin['recent_admins'];
-                $accountEvidence['recently_registered_admins'] = $admin['recent_admins'];
+            $score = 0;
+            $evidence = [];
+
+            $recent = (int) ($admin['recent_admins'] ?? 0);
+            $recentNonGov = (int) ($admin['recent_nongov_admins'] ?? 0);
+            $burst = ! empty($admin['registration_burst']);
+
+            if ($recent > 0) {
+                // Each newly-registered admin in the last 30 days adds weight;
+                // non-gov emails weigh more.
+                $score += $recent * 12 + $recentNonGov * 10;
+                $evidence['recently_registered_admins'] = $recent;
+                if ($recentNonGov > 0) {
+                    $evidence['non_gov_email_admins'] = $recentNonGov;
+                }
+                if (! empty($admin['recent_admin_list'])) {
+                    $evidence['accounts'] = $admin['recent_admin_list'];
+                }
             }
-            // Only flag "many admins" if it's genuinely high relative to users.
-            if (($admin['admins'] ?? 0) >= 5 && $admin['admins'] > ($admin['total_users'] ?? 0)) {
-                // admins > total_users is impossible for real data → orphaned
-                // meta, NOT a finding. Skip (this was the recon false positive).
-            } elseif (($admin['admins'] ?? 0) >= 6) {
-                $accountScore += 10;
-                $accountEvidence['admin_count'] = $admin['admins'];
-                $accountEvidence['total_users'] = $admin['total_users'] ?? null;
+
+            if ($burst) {
+                // Several admins created in a tight window → backdoor pattern.
+                $score = max($score, 80);
+                $evidence['registration_burst'] = true;
             }
-            if ($accountScore > 0) {
-                $accountEvidence['note'] = 'Sinyal lemah — verifikasi manual sebelum tindakan.';
-                $findings[] = $this->finalize(SecscanFinding::THREAT_SPAM, min($accountScore, 35), $accountEvidence);
+
+            if ($score >= (int) config('nawasara-secscan.thresholds.warning', 40)) {
+                // Only surface as an actionable finding when it crosses warning.
+                // Below that it's just normal admin churn — don't bother ops.
+                $findings[] = $this->finalize(SecscanFinding::THREAT_BACKDOOR, $score, $evidence);
             }
         }
 
