@@ -7,6 +7,7 @@ return [
         'workspace' => 'security',
         'label' => 'Keamanan',
         'icon' => 'lucide-shield-alert',
+        'group' => 'Keamanan',
         'url' => '',
         'permission' => 'secscan.view',
         'submenu' => [
