@@ -11,9 +11,11 @@ class PermissionSeeder extends Seeder
     public function run(): void
     {
         $permissions = [
-            'secscan.view',            // dashboard + findings list
+            'secscan.view',            // dashboard + findings + agents list
             'secscan.finding.triage',  // acknowledge / false-positive / resolve
             'secscan.scan.execute',    // trigger a manual rescan
+            'secscan.agent.view',      // view agent detail + incidents
+            'secscan.agent.delete',    // remove/revoke agent registration
         ];
 
         foreach ($permissions as $permission) {

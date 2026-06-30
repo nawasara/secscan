@@ -25,6 +25,20 @@ return [
                 'permission' => 'secscan.view',
                 'navigate' => true,
             ],
+            [
+                'label' => 'Agents',
+                'icon' => 'lucide-server',
+                'url' => url($prefix.'/agents'),
+                'permission' => 'secscan.view',
+                'navigate' => true,
+            ],
+            [
+                'label' => 'Incidents',
+                'icon' => 'lucide-siren',
+                'url' => url($prefix.'/incidents'),
+                'permission' => 'secscan.view',
+                'navigate' => true,
+            ],
         ],
     ],
 ];
