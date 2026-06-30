@@ -29,6 +29,10 @@ class Index extends Component
     #[Url]
     public array $threatFilter = [];
 
+    /** @var array<int,string> */
+    #[Url]
+    public array $sourceFilter = [];
+
     public int $perPage = 25;
 
     /** Finding currently open in the detail/triage modal. */
@@ -38,7 +42,7 @@ class Index extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter'], true)) {
+        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter', 'sourceFilter'], true)) {
             $this->resetPage();
         }
     }
@@ -140,6 +144,16 @@ class Index extends Component
             ->when(! empty($this->severityFilter), fn ($q) => $q->whereIn('severity', $this->severityFilter))
             ->when(! empty($this->statusFilter), fn ($q) => $q->whereIn('status', $this->statusFilter))
             ->when(! empty($this->threatFilter), fn ($q) => $q->whereIn('threat_type', $this->threatFilter))
+            ->when(! empty($this->sourceFilter), fn ($q) => $q->where(function ($sub) {
+                foreach ($this->sourceFilter as $src) {
+                    if ($src === 'sql') {
+                        // Legacy rows have null scan_source; treat them as 'sql'
+                        $sub->orWhereNull('scan_source')->orWhere('scan_source', 'sql');
+                    } else {
+                        $sub->orWhere('scan_source', $src);
+                    }
+                }
+            }))
             ->orderByRaw("FIELD(severity, 'critical','warning','info')")
             ->orderByDesc('score')
             ->orderByDesc('last_detected_at')

@@ -10,8 +10,11 @@ use Livewire\Livewire;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Alerting\Models\AlertRule;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
+use Nawasara\Secscan\Jobs\ScanHttpJob;
 use Nawasara\Secscan\Jobs\ScanWordpressJob;
 use Nawasara\Secscan\Services\FindingScorer;
+use Nawasara\Secscan\Services\HtmlSignalDetector;
+use Nawasara\Secscan\Services\SiteHttpFetcher;
 use Nawasara\Secscan\Services\SqlSignalDetector;
 use Symfony\Component\Finder\Finder;
 
@@ -43,6 +46,10 @@ class SecscanServiceProvider extends ServiceProvider
             $app->make(MysqlConnection::class),
             $app->make(FindingScorer::class),
         ));
+
+        // F2 services — singletons so rate-limit/backoff state persists per process.
+        $this->app->singleton(SiteHttpFetcher::class, fn () => new SiteHttpFetcher());
+        $this->app->singleton(HtmlSignalDetector::class, fn () => new HtmlSignalDetector());
     }
 
     /**
@@ -97,6 +104,19 @@ class SecscanServiceProvider extends ServiceProvider
                 ->name('nawasara-secscan:scan-wordpress')
                 ->cron("*/{$interval} * * * *")
                 ->withoutOverlapping(15);
+
+            // F2 HTTP probe — runs less frequently (default every 6 hours).
+            // Config is in minutes; convert to hours for cron (min 1h, max 24h).
+            if (config('nawasara-secscan.http_probe.enabled', true)) {
+                $httpMinutes = max(60, (int) config('nawasara-secscan.http_probe.scan_interval', 360));
+                $httpHours   = max(1, (int) round($httpMinutes / 60));
+                $schedule->call(function () {
+                    ScanHttpJob::dispatch(triggerSource: 'scheduled');
+                })
+                    ->name('nawasara-secscan:scan-http')
+                    ->cron("0 */{$httpHours} * * *")
+                    ->withoutOverlapping(30);
+            }
         });
     }
 

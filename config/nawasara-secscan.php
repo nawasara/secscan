@@ -80,13 +80,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Sidecar (Fase 2 — Python HTTP probe). Unused until F2 lands.
+    | F2 HTTP Probe — SiteHttpFetcher configuration
     |--------------------------------------------------------------------------
+    | Probes *.ponorogo.go.id hostnames from CF DNS records with Googlebot UA.
+    | Rate-limiting protects OPD sites from being overloaded by the scanner.
     */
-    'sidecar' => [
-        'enabled' => env('SECSCAN_SIDECAR_ENABLED', false),
-        'url' => env('SECSCAN_SIDECAR_URL', 'http://secscan-sidecar:8300'),
-        'timeout' => env('SECSCAN_SIDECAR_TIMEOUT', 30),
+    'http_probe' => [
+        'enabled'             => env('SECSCAN_HTTP_PROBE_ENABLED', true),
+        'scan_interval'       => env('SECSCAN_HTTP_SCAN_INTERVAL', 360),  // minutes; default 6 hours
+        'timeout_seconds'     => env('SECSCAN_HTTP_TIMEOUT', 15),
+        'delay_ms_per_host'   => env('SECSCAN_HTTP_DELAY_MS', 2000),    // delay between requests to same host
+        'daily_quota_per_host' => env('SECSCAN_HTTP_DAILY_QUOTA', 100), // max fetches per host per day
+        'backoff_after_failures' => 3,
+        'backoff_minutes'     => 30,
+        'max_body_kb'         => 2048,
+        // WP-specific paths probed in addition to homepage
+        'wp_paths' => [
+            '/wp-login.php',
+            '/wp-content/uploads/',
+        ],
     ],
 
     /*

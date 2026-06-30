@@ -14,6 +14,9 @@ class SecscanFinding extends Model
 {
     protected $table = 'nawasara_secscan_findings';
 
+    public const SCAN_SOURCE_SQL  = 'sql';
+    public const SCAN_SOURCE_HTTP = 'http';
+
     public const THREAT_JUDOL = 'judol';
     public const THREAT_DEFACED = 'defaced';
     public const THREAT_PHISHING = 'phishing';
@@ -109,5 +112,41 @@ class SecscanFinding extends Model
             self::STATUS_FALSE_POSITIVE => 'neutral',
             default => 'neutral',
         };
+    }
+
+    /** Label for the scan source. Null scan_source = legacy SQL finding. */
+    public function sourceLabel(): string
+    {
+        return match ($this->scan_source) {
+            self::SCAN_SOURCE_HTTP => 'HTTP',
+            default => 'SQL',
+        };
+    }
+
+    public function sourceColor(): string
+    {
+        return match ($this->scan_source) {
+            self::SCAN_SOURCE_HTTP => 'info',
+            default => 'neutral',
+        };
+    }
+
+    public function isHttpSource(): bool
+    {
+        return $this->scan_source === self::SCAN_SOURCE_HTTP;
+    }
+
+    /** Human-readable display title: site name or hostname. */
+    public function displayName(): string
+    {
+        return $this->site_name ?: $this->db_name;
+    }
+
+    /** Link to the affected site/path, if available. */
+    public function displayUrl(): ?string
+    {
+        if ($this->scan_url) return $this->scan_url;
+        if ($this->site_url) return $this->site_url;
+        return null;
     }
 }
