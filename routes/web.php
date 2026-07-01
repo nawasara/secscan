@@ -37,15 +37,8 @@ Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function (
         ->name('nawasara-secscan.ip-timeline');
 });
 
-// Agent API — no auth session, uses X-Agent-Key + X-Agent-Id headers
-Route::middleware(['api'])->prefix('api/agent')->group(function () {
-    Route::post('register',          [AgentController::class, 'register']);
-    Route::post('incidents',         [AgentController::class, 'incidents']);
-    Route::post('heartbeat',         [AgentController::class, 'heartbeat']);
-    Route::get('commands/pending',   [AgentController::class, 'commandsPending']);
-    Route::post('command-result',    [AgentController::class, 'commandResult']);
-    Route::post('scan-findings',     [AgentController::class, 'scanFinding']);
-});
+// Agent API routes are registered in routes/api.php (root app) to avoid
+// web middleware CSRF redirect. See bootstrap/app.php apiPrefix: ''.
 
 // Agent install script — served as text/plain, no auth required
 // curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
