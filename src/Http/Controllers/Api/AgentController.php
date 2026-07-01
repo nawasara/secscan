@@ -3,6 +3,7 @@
 namespace Nawasara\Secscan\Http\Controllers\Api;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
@@ -140,6 +141,44 @@ class AgentController extends Controller
         ]);
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * GET /agent/download/{version}/{os}/{arch}/{binary}
+     *
+     * Redirects to the GitHub Releases asset for the requested binary.
+     * version = "latest" resolves to the latest GitHub release tag.
+     *
+     * Examples:
+     *   /agent/download/latest/linux/amd64/nawasara-agent
+     *   /agent/download/v0.2.0/linux/arm64/nawasara-agent
+     */
+    public function download(string $version, string $os, string $arch, string $binary): RedirectResponse
+    {
+        $repo    = config('nawasara-secscan.agent.github_repo', 'nawasara/agent');
+        $allowed = ['linux'];
+        $archs   = ['amd64', 'arm64'];
+
+        if (! in_array($os, $allowed, true) || ! in_array($arch, $archs, true)) {
+            abort(404, 'Unsupported OS or architecture.');
+        }
+
+        // Sanitise binary name — only allow the expected filename
+        if (! preg_match('/^nawasara-agent(\.exe)?$/', $binary)) {
+            abort(404);
+        }
+
+        $assetName = "nawasara-agent-{$os}-{$arch}";
+
+        if ($version === 'latest') {
+            $url = "https://github.com/{$repo}/releases/latest/download/{$assetName}";
+        } else {
+            // Normalise — accept "v0.2.0" or "0.2.0"
+            $tag = str_starts_with($version, 'v') ? $version : "v{$version}";
+            $url = "https://github.com/{$repo}/releases/download/{$tag}/{$assetName}";
+        }
+
+        return redirect()->away($url);
     }
 
     protected function resolveAgent(Request $request): ?Agent

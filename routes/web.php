@@ -43,3 +43,12 @@ Route::middleware(['api'])->prefix('api/agent')->group(function () {
     Route::post('incidents',  [AgentController::class, 'incidents']);
     Route::post('heartbeat',  [AgentController::class, 'heartbeat']);
 });
+
+// Agent binary download — redirects to GitHub Releases asset
+// Example: GET /agent/download/latest/linux/amd64/nawasara-agent
+Route::get('agent/download/{version}/{os}/{arch}/{binary}', [AgentController::class, 'download'])
+    ->where('version', '[a-zA-Z0-9._-]+')
+    ->where('os', '[a-z]+')
+    ->where('arch', '[a-z0-9]+')
+    ->where('binary', '[a-zA-Z0-9._-]+')
+    ->name('nawasara-secscan.agent.download');

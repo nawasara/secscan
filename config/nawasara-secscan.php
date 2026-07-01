@@ -112,6 +112,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Agent binary distribution
+    |--------------------------------------------------------------------------
+    | The /agent/download/{version}/{os}/{arch}/nawasara-agent endpoint
+    | redirects to GitHub Releases. Set the repo slug here.
+    */
+    'agent' => [
+        'github_repo' => env('SECSCAN_AGENT_GITHUB_REPO', 'nawasara/agent'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Trusted iframe domains (HTTP probe)
     |--------------------------------------------------------------------------
     | Domains listed here are NEVER flagged as suspicious iframes. YouTube,
