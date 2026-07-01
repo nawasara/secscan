@@ -1,0 +1,18 @@
+name: Packagist Update
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  notify-packagist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Packagist webhook
+        run: |
+          curl -sSf -X POST \
+            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+            -d '{"repository":{"url":"https://github.com/nawasara/secscan"}}' \
+            -H "Content-Type: application/json"
+          echo "Packagist notified for ${{ github.ref_name }}"
