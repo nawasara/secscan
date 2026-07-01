@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Nawasara\Secscan\Models\Agent;
+use Nawasara\Secscan\Models\AgentCommand;
 use Nawasara\Secscan\Models\AgentHeartbeat;
 use Nawasara\Secscan\Models\SecurityIncident;
 
@@ -138,6 +139,79 @@ class AgentController extends Controller
             'agent_version'  => $data['agent_version'] ?? $agent->agent_version,
             'plugins_active' => $data['plugins_active'] ?? $agent->plugins_active,
             'last_seen_at'   => now(),
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * GET /api/agent/commands/pending
+     *
+     * Returns approved commands waiting to be executed by this agent.
+     * Each command is marked as "sent" immediately so it's not returned twice.
+     */
+    public function commandsPending(Request $request): JsonResponse
+    {
+        $agent = $this->resolveAgent($request);
+        if (! $agent) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $commands = AgentCommand::where('agent_id', $agent->id)
+            ->where('status', AgentCommand::STATUS_APPROVED)
+            ->orderBy('approved_at')
+            ->limit(10)
+            ->get();
+
+        // Mark as sent so they're not returned on next poll
+        if ($commands->isNotEmpty()) {
+            AgentCommand::whereIn('id', $commands->pluck('id'))
+                ->update(['status' => AgentCommand::STATUS_SENT, 'sent_at' => now()]);
+        }
+
+        return response()->json([
+            'commands' => $commands->map(fn ($cmd) => [
+                'command_id' => $cmd->command_id,
+                'action'     => $cmd->action,
+                'params'     => $cmd->params ?? [],
+                'issued_at'  => $cmd->approved_at->toIso8601String(),
+            ]),
+        ]);
+    }
+
+    /**
+     * POST /api/agent/command-result
+     *
+     * Agent reports execution result for a previously received command.
+     */
+    public function commandResult(Request $request): JsonResponse
+    {
+        $agent = $this->resolveAgent($request);
+        if (! $agent) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $data = $request->validate([
+            'command_id' => 'required|string|max:32',
+            'success'    => 'required|boolean',
+            'output'     => 'nullable|string|max:10000',
+            'error'      => 'nullable|string|max:5000',
+            'exec_at'    => 'nullable|date',
+        ]);
+
+        $cmd = AgentCommand::where('command_id', $data['command_id'])
+            ->where('agent_id', $agent->id)
+            ->first();
+
+        if (! $cmd) {
+            return response()->json(['success' => false, 'message' => 'Command not found'], 404);
+        }
+
+        $cmd->update([
+            'status'  => $data['success'] ? AgentCommand::STATUS_COMPLETED : AgentCommand::STATUS_FAILED,
+            'output'  => $data['output'] ?? null,
+            'error'   => $data['error'] ?? null,
+            'exec_at' => $data['exec_at'] ?? now(),
         ]);
 
         return response()->json(['success' => true]);

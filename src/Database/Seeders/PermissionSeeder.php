@@ -16,6 +16,7 @@ class PermissionSeeder extends Seeder
             'secscan.scan.execute',    // trigger a manual rescan
             'secscan.agent.view',      // view agent detail + incidents
             'secscan.agent.delete',    // remove/revoke agent registration
+            'secscan.agent.command',   // issue + approve/reject remote commands (Phase 2)
         ];
 
         foreach ($permissions as $permission) {

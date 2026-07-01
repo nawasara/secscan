@@ -34,6 +34,7 @@
         "nawasara/alerting": "*",
         "nawasara/database-monitor": "*",
         "nawasara/registry": "*",
+        "nawasara/auth-primitives": "*",
         "livewire/livewire": "^3.0"
     },
     "autoload": {

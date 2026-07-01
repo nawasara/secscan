@@ -41,6 +41,11 @@
                 color="info" />
         </div>
 
+        {{-- Commands panel (Phase 2 — show only if executor is relevant) --}}
+        <x-nawasara-ui::page.card class="mb-6">
+            <livewire:nawasara-secscan.agents.section.commands :agentId="$this->agent->agent_id" :key="'commands-'.$this->agent->id" />
+        </x-nawasara-ui::page.card>
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             {{-- Left: Agent info + heartbeat --}}
