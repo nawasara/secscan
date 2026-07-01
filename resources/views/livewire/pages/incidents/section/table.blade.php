@@ -30,8 +30,7 @@
                 description="Belum ada insiden yang dilaporkan oleh agent." />
         @else
             <x-nawasara-ui::table
-                :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Agent', 'Terdeteksi', 'Correlated', '']"
-                stickyLast>
+                :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Agent', 'Terdeteksi', 'Correlated', '']">
                 <x-slot:table>
                     @foreach ($incidents as $inc)
                         <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
