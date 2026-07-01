@@ -44,11 +44,15 @@
                                 {{ $inc->typeLabel() }}
                             </td>
                             <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
-                                <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
-                                   wire:navigate
-                                   class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
-                                    {{ $inc->source_ip }}
-                                </a>
+                                @if($inc->source_ip)
+                                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
+                                       wire:navigate
+                                       class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
+                                        {{ $inc->source_ip }}
+                                    </a>
+                                @else
+                                    <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                                 {{ $inc->score }}
@@ -111,7 +115,7 @@
                     </div>
                     <div>
                         <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Source IP</p>
-                        <p class="font-mono text-neutral-800 dark:text-neutral-100">{{ $selectedIncident->source_ip }}</p>
+                        <p class="font-mono text-neutral-800 dark:text-neutral-100">{{ $selectedIncident->source_ip ?? '—' }}</p>
                     </div>
                     <div>
                         <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Score</p>
@@ -157,11 +161,17 @@
             </div>
 
             <x-slot:footer>
-                <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $selectedIncident->source_ip]) }}"
-                   wire:navigate
-                   class="text-sm text-emerald-600 dark:text-emerald-400 hover:underline">
-                    Lihat semua insiden dari IP ini →
-                </a>
+                @if($selectedIncident->source_ip)
+                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $selectedIncident->source_ip]) }}"
+                       wire:navigate
+                       class="text-sm text-emerald-600 dark:text-emerald-400 hover:underline">
+                        Lihat semua insiden dari IP ini →
+                    </a>
+                @else
+                    <span class="text-sm text-neutral-400 dark:text-neutral-600">
+                        Tidak ada source IP (filesystem finding)
+                    </span>
+                @endif
             </x-slot:footer>
         @else
             <x-nawasara-ui::loading />

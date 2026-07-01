@@ -189,11 +189,15 @@
                                             {{ $inc->typeLabel() }}
                                         </td>
                                         <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
-                                            <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
-                                               wire:navigate
-                                               class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
-                                                {{ $inc->source_ip }}
-                                            </a>
+                                            @if($inc->source_ip)
+                                                <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
+                                                   wire:navigate
+                                                   class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
+                                                    {{ $inc->source_ip }}
+                                                </a>
+                                            @else
+                                                <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                                             {{ $inc->score }}
