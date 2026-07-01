@@ -44,6 +44,7 @@ Route::middleware(['api'])->prefix('api/agent')->group(function () {
     Route::post('heartbeat',         [AgentController::class, 'heartbeat']);
     Route::get('commands/pending',   [AgentController::class, 'commandsPending']);
     Route::post('command-result',    [AgentController::class, 'commandResult']);
+    Route::post('scan-findings',     [AgentController::class, 'scanFinding']);
 });
 
 // Agent binary download — redirects to GitHub Releases asset

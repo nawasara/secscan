@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\AgentCommand;
 use Nawasara\Secscan\Models\AgentHeartbeat;
+use Nawasara\Secscan\Models\AgentScanFinding;
 use Nawasara\Secscan\Models\SecurityIncident;
 
 class AgentController extends Controller
@@ -213,6 +214,61 @@ class AgentController extends Controller
             'error'   => $data['error'] ?? null,
             'exec_at' => $data['exec_at'] ?? now(),
         ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /api/agent/scan-findings
+     *
+     * Accepts a single file scanner finding from the agent.
+     * The agent pushes one JSON object per finding (not batched).
+     */
+    public function scanFinding(Request $request): JsonResponse
+    {
+        $agent = $this->resolveAgent($request);
+        if (! $agent) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $data = $request->validate([
+            'finding_id'   => 'required|string|max:32',
+            'path'         => 'required|string|max:1024',
+            'signature_id' => 'required|string|max:64',
+            'sig_name'     => 'required|string|max:128',
+            'category'     => 'required|in:webshell,backdoor,exploit,integrity,suspicious',
+            'severity'     => 'required|in:critical,high,medium',
+            'score'        => 'required|integer|min:0|max:100',
+            'description'  => 'nullable|string|max:1024',
+            'matched_line' => 'nullable|string|max:512',
+            'file_size'    => 'nullable|integer|min:0',
+            'file_mtime'   => 'nullable|integer',  // unix timestamp
+            'detected_at'  => 'nullable|integer',  // unix timestamp
+        ]);
+
+        // Deduplicate by finding_id
+        if (AgentScanFinding::where('finding_id', $data['finding_id'])->exists()) {
+            return response()->json(['success' => true, 'skipped' => true]);
+        }
+
+        AgentScanFinding::create([
+            'finding_id'   => $data['finding_id'],
+            'agent_id'     => $agent->id,
+            'path'         => $data['path'],
+            'signature_id' => $data['signature_id'],
+            'sig_name'     => $data['sig_name'],
+            'category'     => $data['category'],
+            'severity'     => $data['severity'],
+            'score'        => $data['score'],
+            'description'  => $data['description'] ?? null,
+            'matched_line' => $data['matched_line'] ?? null,
+            'file_size'    => $data['file_size'] ?? null,
+            'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : null,
+            'status'       => AgentScanFinding::STATUS_OPEN,
+            'detected_at'  => isset($data['detected_at']) ? \Carbon\Carbon::createFromTimestamp($data['detected_at']) : now(),
+        ]);
+
+        $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
 
         return response()->json(['success' => true]);
     }
