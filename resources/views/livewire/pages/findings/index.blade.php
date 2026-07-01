@@ -314,11 +314,9 @@
 
         {{-- Incidents Agent tab --}}
         <x-nawasara-ui::page.card>
-            {{-- Toolbar: search di kiri, filter-panel di kanan. --}}
+            {{-- Toolbar: filter-panel di kiri, search di kanan (sama seperti tab Temuan Website). --}}
             <div class="space-y-2 mb-4">
                 <div class="flex flex-col md:flex-row md:flex-nowrap md:items-center gap-2">
-                    <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
-
                     <div class="flex flex-wrap items-center gap-2 shrink-0">
                         <x-nawasara-ui::filter-panel
                             label="Filter"
@@ -329,7 +327,7 @@
                                 label="Severity"
                                 model="incSeverity"
                                 :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
-                                icon="lucide-circle-check" />
+                                icon="lucide-octagon-alert" />
 
                             <x-nawasara-ui::filter-group
                                 label="Tipe Insiden"
@@ -339,9 +337,17 @@
 
                         </x-nawasara-ui::filter-panel>
                     </div>
+
+                    <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
                 </div>
 
                 <div wire:ignore data-filter-chips></div>
+
+                @if ($incSearch !== '')
+                    <div class="flex flex-wrap items-center gap-2">
+                        <x-nawasara-ui::filter-chip label="Cari: {{ $incSearch }}" model="incSearch" />
+                    </div>
+                @endif
             </div>
 
             @if ($this->incidents->isEmpty())
