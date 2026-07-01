@@ -65,7 +65,7 @@ class AgentController extends Controller
             'incidents.*.incident_id' => 'required|string|max:32',
             'incidents.*.type'        => 'required|string|max:64',
             'incidents.*.severity'    => 'required|in:info,medium,high,critical',
-            'incidents.*.source_ip'   => 'nullable|ip',
+            'incidents.*.source_ip'   => 'nullable|string|max:45',
             'incidents.*.score'       => 'required|integer|min:0|max:100',
             'incidents.*.evidence'    => 'required|array',
             'incidents.*.detected_at' => 'required|date',
