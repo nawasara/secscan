@@ -9,13 +9,27 @@ use Livewire\WithPagination;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Models\SecscanFindingHistory;
+use Nawasara\Secscan\Models\SecurityIncident;
 
 class Index extends Component
 {
     use WithPagination;
 
     #[Url]
+    public string $tab = 'findings'; // findings|incidents
+
+    #[Url]
     public string $search = '';
+
+    // Incidents tab filters
+    #[Url]
+    public string $incSearch = '';
+
+    #[Url]
+    public string $incSeverity = '';
+
+    #[Url]
+    public string $incType = '';
 
     /** @var array<int,string> */
     #[Url]
@@ -40,9 +54,14 @@ class Index extends Component
 
     public string $triageReason = '';
 
+    public function updatedTab(): void
+    {
+        $this->resetPage();
+    }
+
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter', 'sourceFilter'], true)) {
+        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter', 'sourceFilter', 'incSearch', 'incSeverity', 'incType'], true)) {
             $this->resetPage();
         }
     }
@@ -128,6 +147,32 @@ class Index extends Component
     public function threatOptions(): array
     {
         return SecscanFinding::threatLabels();
+    }
+
+    #[Computed]
+    public function incidents()
+    {
+        return SecurityIncident::with('agent')
+            ->when($this->incSearch, fn ($q) => $q->where('source_ip', 'like', "%{$this->incSearch}%"))
+            ->when($this->incSeverity, fn ($q) => $q->where('severity', $this->incSeverity))
+            ->when($this->incType, fn ($q) => $q->where('type', $this->incType))
+            ->orderByRaw("FIELD(severity, 'critical','high','medium','info')")
+            ->orderByDesc('detected_at')
+            ->paginate($this->perPage);
+    }
+
+    #[Computed]
+    public function incidentTypeOptions(): array
+    {
+        return SecurityIncident::query()
+            ->selectRaw('type, COUNT(*) as cnt')
+            ->groupBy('type')
+            ->orderByDesc('cnt')
+            ->limit(20)
+            ->pluck('cnt', 'type')
+            ->keys()
+            ->mapWithKeys(fn ($t) => [$t => ucwords(str_replace('_', ' ', $t))])
+            ->toArray();
     }
 
     #[Computed]

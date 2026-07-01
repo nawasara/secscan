@@ -5,7 +5,6 @@ use Nawasara\Secscan\Http\Controllers\Api\AgentController;
 use Nawasara\Secscan\Livewire\Agents\Index as AgentsIndex;
 use Nawasara\Secscan\Livewire\Dashboard\Index as DashboardIndex;
 use Nawasara\Secscan\Livewire\Findings\Index as FindingsIndex;
-use Nawasara\Secscan\Livewire\Incidents\Index as IncidentsIndex;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 
 Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function () {
@@ -21,9 +20,6 @@ Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function (
         ->middleware(PermissionMiddleware::using('secscan.view'))
         ->name('nawasara-secscan.agents');
 
-    Route::get('incidents', IncidentsIndex::class)
-        ->middleware(PermissionMiddleware::using('secscan.view'))
-        ->name('nawasara-secscan.incidents');
 });
 
 // Agent API — no auth session, uses X-Agent-Key header

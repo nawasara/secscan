@@ -6,7 +6,7 @@
 
         @if ($agents->isEmpty())
             <x-nawasara-ui::empty-state
-                icon="shield-off"
+                icon="lucide-shield-off"
                 title="Belum ada agent terdaftar"
                 description="Install nawasara-agent di server target dan jalankan skrip registrasi." />
         @else
