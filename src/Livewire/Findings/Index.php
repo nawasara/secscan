@@ -52,6 +52,9 @@ class Index extends Component
     /** Finding currently open in the detail/triage modal. */
     public ?int $detailId = null;
 
+    /** Incident currently open in the incident evidence modal (Incidents Agent tab). */
+    public ?int $incidentDetailId = null;
+
     public string $triageReason = '';
 
     public function updatedTab(): void
@@ -71,6 +74,20 @@ class Index extends Component
         $this->detailId = $id;
         $this->triageReason = '';
         $this->dispatch('modal-open:secscan-finding-detail');
+    }
+
+    public function openIncidentDetail(int $id): void
+    {
+        $this->incidentDetailId = $id;
+        $this->dispatch('modal-open:secscan-incident-detail');
+    }
+
+    #[Computed]
+    public function incidentDetail(): ?SecurityIncident
+    {
+        return $this->incidentDetailId
+            ? SecurityIncident::with('agent')->find($this->incidentDetailId)
+            : null;
     }
 
     public function acknowledge(int $id): void

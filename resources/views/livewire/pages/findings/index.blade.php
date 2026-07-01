@@ -314,25 +314,26 @@
 
         {{-- Incidents Agent tab --}}
         <x-nawasara-ui::page.card>
-            <div class="flex flex-col md:flex-row gap-3 mb-4">
+            <div class="flex flex-wrap items-center gap-3 mb-4">
                 <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
 
-                <select wire:model.live="incSeverity"
-                    class="rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm text-neutral-700 dark:text-neutral-200 px-3 py-2 min-w-[140px]">
-                    <option value="">Semua Severity</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="info">Info</option>
-                </select>
+                <x-nawasara-ui::filter-panel
+                    :state="['incSeverity' => $incSeverity, 'incType' => $incType]"
+                    :dimensions="['incSeverity' => 'Severity', 'incType' => 'Tipe Insiden']">
 
-                <select wire:model.live="incType"
-                    class="rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm text-neutral-700 dark:text-neutral-200 px-3 py-2 min-w-[180px]">
-                    <option value="">Semua Tipe</option>
-                    @foreach ($this->incidentTypeOptions as $val => $label)
-                        <option value="{{ $val }}">{{ $label }}</option>
-                    @endforeach
-                </select>
+                    <x-nawasara-ui::filter-group
+                        label="Severity"
+                        model="incSeverity"
+                        :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']" />
+
+                    <x-nawasara-ui::filter-group
+                        label="Tipe Insiden"
+                        model="incType"
+                        :items="$this->incidentTypeOptions" />
+
+                </x-nawasara-ui::filter-panel>
+
+                <div data-filter-chips></div>
             </div>
 
             @if ($this->incidents->isEmpty())
@@ -343,8 +344,7 @@
                     description="Belum ada insiden yang dilaporkan oleh nawasara-agent." />
             @else
                 <x-nawasara-ui::table
-                    :headers="['Severity', 'Tipe', 'Source IP', 'Skor', 'Agent', 'Terdeteksi', 'Correlated']"
-                    stickyLast>
+                    :headers="['Severity', 'Tipe', 'Source IP', 'Skor', 'Agent', 'Terdeteksi', 'Correlated', '']">
                     <x-slot:table>
                         @foreach ($this->incidents as $inc)
                             <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -357,7 +357,11 @@
                                     {{ $inc->typeLabel() }}
                                 </td>
                                 <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
-                                    {{ $inc->source_ip }}
+                                    @if ($inc->source_ip)
+                                        {{ $inc->source_ip }}
+                                    @else
+                                        <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
+                                    @endif
                                 </td>
                                 <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                                     {{ $inc->score }}
@@ -380,6 +384,14 @@
                                         <span class="text-neutral-400 dark:text-neutral-500 text-sm">—</span>
                                     @endif
                                 </td>
+                                <td class="px-4 py-3">
+                                    <x-nawasara-ui::icon-button
+                                        icon="lucide-eye"
+                                        tooltip="Lihat evidence"
+                                        placement="left"
+                                        x-on:click="$dispatch('open-modal', { id: 'secscan-incident-detail', loading: true })"
+                                        wire:click="openIncidentDetail({{ $inc->id }})" />
+                                </td>
                             </tr>
                         @endforeach
                     </x-slot:table>
@@ -394,4 +406,83 @@
         @endif
 
     </x-nawasara-ui::page.container>
+
+    {{-- Incident evidence modal (Incidents Agent tab) --}}
+    <x-nawasara-ui::modal id="secscan-incident-detail" title="Detail Insiden">
+        @if ($this->incidentDetail)
+            @php($inc = $this->incidentDetail)
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Tipe</p>
+                        <p class="text-neutral-800 dark:text-neutral-100 font-medium">{{ $inc->typeLabel() }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Severity</p>
+                        <x-nawasara-ui::badge :color="$inc->severityColor()">{{ ucfirst($inc->severity) }}</x-nawasara-ui::badge>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Source IP</p>
+                        <p class="font-mono text-neutral-800 dark:text-neutral-100">{{ $inc->source_ip ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Skor</p>
+                        <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $inc->score }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Terdeteksi</p>
+                        <p class="text-neutral-700 dark:text-neutral-200">{{ $inc->detected_at?->format('d M Y H:i:s') }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Agent</p>
+                        <p class="text-neutral-700 dark:text-neutral-200">{{ $inc->agent?->name ?? '—' }}</p>
+                    </div>
+                </div>
+
+                @if ($inc->evidence)
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">Evidence</p>
+                        <div class="space-y-2">
+                            @foreach ($inc->evidence as $ev)
+                                <div class="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 text-xs font-mono">
+                                    <div class="text-neutral-400 dark:text-neutral-500 mb-1">
+                                        {{ $ev['timestamp'] ?? '' }}
+                                        @if (!empty($ev['matched_rule']))
+                                            · <span class="text-emerald-600 dark:text-emerald-400">{{ $ev['matched_rule'] }}</span>
+                                        @endif
+                                    </div>
+                                    <div class="text-neutral-800 dark:text-neutral-200 break-all">{{ $ev['raw'] ?? json_encode($ev) }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                @if ($inc->correlated && $inc->correlated_group_id)
+                    <div class="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800/50">
+                        <x-lucide-link-2 class="size-4 text-red-600 dark:text-red-400 shrink-0" />
+                        <p class="text-xs text-red-700 dark:text-red-300">
+                            Insiden ini merupakan bagian dari rantai serangan (group: <span class="font-mono">{{ $inc->correlated_group_id }}</span>)
+                        </p>
+                    </div>
+                @endif
+            </div>
+
+            <x-slot:footer>
+                @if ($inc->source_ip)
+                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
+                       wire:navigate
+                       class="text-sm text-emerald-600 dark:text-emerald-400 hover:underline">
+                        Lihat semua insiden dari IP ini →
+                    </a>
+                @else
+                    <span class="text-sm text-neutral-400 dark:text-neutral-600">
+                        Tidak ada source IP (filesystem finding)
+                    </span>
+                @endif
+            </x-slot:footer>
+        @else
+            <x-nawasara-ui::loading />
+        @endif
+    </x-nawasara-ui::modal>
 </div>
