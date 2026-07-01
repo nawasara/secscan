@@ -274,6 +274,149 @@ class AgentController extends Controller
     }
 
     /**
+     * GET /agent/install.sh
+     *
+     * Serves a one-liner bash install script for nawasara-agent.
+     * Returns text/plain so `curl | bash` works without CF bot challenge
+     * (the route is excluded from CF managed challenge via WAF rule).
+     */
+    public function installScript(): \Illuminate\Http\Response
+    {
+        $dashboardUrl = rtrim(config('app.url'), '/');
+        $repo         = config('nawasara-secscan.agent.github_repo', 'nawasara/agent');
+
+        $script = <<<BASH
+        #!/usr/bin/env bash
+        # nawasara-agent installer
+        # Usage: curl -sSL {$dashboardUrl}/agent/install.sh | bash
+        set -euo pipefail
+
+        DASHBOARD_URL="{$dashboardUrl}"
+        GITHUB_REPO="{$repo}"
+        INSTALL_DIR="/usr/local/bin"
+        CONFIG_DIR="/etc/nawasara-agent"
+        DATA_DIR="/var/lib/nawasara-agent"
+        LOG_DIR="/var/log/nawasara-agent"
+        SERVICE_FILE="/etc/systemd/system/nawasara-agent.service"
+
+        # Detect arch
+        ARCH=\$(uname -m)
+        case "\$ARCH" in
+            x86_64)  ARCH="amd64" ;;
+            aarch64) ARCH="arm64" ;;
+            *) echo "Unsupported architecture: \$ARCH"; exit 1 ;;
+        esac
+
+        OS="linux"
+        BINARY="nawasara-agent-\${OS}-\${ARCH}"
+        DOWNLOAD_URL="\${DASHBOARD_URL}/agent/download/latest/\${OS}/\${ARCH}/nawasara-agent"
+
+        echo "==> Nawasara Agent Installer"
+        echo "    Dashboard : \${DASHBOARD_URL}"
+        echo "    Arch      : \${ARCH}"
+        echo ""
+
+        # Create directories
+        mkdir -p "\$CONFIG_DIR" "\$DATA_DIR" "\$LOG_DIR"
+
+        # Download binary
+        echo "==> Downloading nawasara-agent (\${ARCH})..."
+        curl -sSL -o "\${INSTALL_DIR}/nawasara-agent" "\${DOWNLOAD_URL}"
+        chmod +x "\${INSTALL_DIR}/nawasara-agent"
+        echo "    Binary installed at \${INSTALL_DIR}/nawasara-agent"
+
+        # Write default config if not exists
+        if [ ! -f "\${CONFIG_DIR}/config.yaml" ]; then
+            echo "==> Writing default config to \${CONFIG_DIR}/config.yaml"
+            cat > "\${CONFIG_DIR}/config.yaml" <<'CONFIG'
+        # Nawasara Agent Configuration
+        # Edit before starting the service.
+
+        dashboard_url: DASHBOARD_PLACEHOLDER
+        agent_id: ""      # Will be assigned after registration
+        api_key:  ""      # Will be assigned after registration
+
+        heartbeat_interval: 30s
+
+        laravel:
+          enabled: true
+          log_paths:
+            - /var/www/html/storage/logs/*.log
+            - /home/*/public_html/storage/logs/*.log
+
+        scanner:
+          enabled: false                           # Set true to enable Phase 3 file scanner
+          scan_interval: 6h
+          web_dirs:
+            - /var/www/html
+            - /home/*/public_html
+          watch_paths:
+            - /etc/nginx
+            - /etc/apache2
+          hash_db: /var/lib/nawasara-agent/hashes.db
+        CONFIG
+            # Replace placeholder
+            sed -i "s|DASHBOARD_PLACEHOLDER|\${DASHBOARD_URL}|g" "\${CONFIG_DIR}/config.yaml"
+        else
+            echo "    Config already exists — skipping."
+        fi
+
+        # Install systemd service
+        if [ ! -f "\$SERVICE_FILE" ]; then
+            echo "==> Installing systemd service..."
+            cat > "\$SERVICE_FILE" <<'SERVICE'
+        [Unit]
+        Description=Nawasara Security Agent
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/local/bin/nawasara-agent --config /etc/nawasara-agent/config.yaml
+        Restart=always
+        RestartSec=10
+        User=root
+        StandardOutput=append:/var/log/nawasara-agent/agent.log
+        StandardError=append:/var/log/nawasara-agent/agent.log
+
+        [Install]
+        WantedBy=multi-user.target
+        SERVICE
+            systemctl daemon-reload
+            systemctl enable nawasara-agent
+        else
+            echo "    Service already exists — skipping."
+        fi
+
+        echo ""
+        echo "==> Installation complete!"
+        echo ""
+        echo "NEXT STEPS:"
+        echo "  1. Edit config:    nano \${CONFIG_DIR}/config.yaml"
+        echo "     - Set dashboard_url (already set to \${DASHBOARD_URL})"
+        echo "     - Register agent to get agent_id + api_key:"
+        echo ""
+        echo "       curl -s -X POST \${DASHBOARD_URL}/api/agent/register \\"
+        echo "         -H 'Content-Type: application/json' \\"
+        echo "         -d '{\"name\":\"MY-VM\",\"hostname\":\"\$(hostname)\",\"os\":\"\$(uname -s | tr A-Z a-z)\",\"arch\":\"\$(uname -m)\"}'"
+        echo ""
+        echo "  2. Paste agent_id + api_key ke config.yaml"
+        echo "  3. Start service:  systemctl start nawasara-agent"
+        echo "  4. Check logs:     tail -f /var/log/nawasara-agent/agent.log"
+        BASH;
+
+        // Strip leading spaces from heredoc indentation
+        $lines  = explode("\n", $script);
+        $script = implode("\n", array_map(fn ($l) => preg_replace('/^        /', '', $l), $lines));
+
+        return response($script, 200, [
+            'Content-Type'        => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="install.sh"',
+            'Cache-Control'       => 'no-store',
+            'X-Robots-Tag'        => 'noindex',
+        ]);
+    }
+
+    /**
      * GET /agent/download/{version}/{os}/{arch}/{binary}
      *
      * Redirects to the GitHub Releases asset for the requested binary.

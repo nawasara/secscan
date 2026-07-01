@@ -47,6 +47,11 @@ Route::middleware(['api'])->prefix('api/agent')->group(function () {
     Route::post('scan-findings',     [AgentController::class, 'scanFinding']);
 });
 
+// Agent install script — served as text/plain, no auth required
+// curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
+Route::get('agent/install.sh', [AgentController::class, 'installScript'])
+    ->name('nawasara-secscan.agent.install');
+
 // Agent binary download — redirects to GitHub Releases asset
 // Example: GET /agent/download/latest/linux/amd64/nawasara-agent
 Route::get('agent/download/{version}/{os}/{arch}/{binary}', [AgentController::class, 'download'])
