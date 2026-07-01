@@ -48,8 +48,7 @@
 
         {{-- File Scan Findings panel (Phase 3) --}}
         <x-nawasara-ui::page.card class="mb-6">
-            <div class="flex items-center gap-2 mb-4">
-                <x-nawasara-ui::lucide icon="scan-search" class="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+            <div class="mb-4">
                 <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">File Scanner Findings</p>
             </div>
             <livewire:nawasara-secscan.agents.section.scan-findings :agentDbId="$this->agent->id" :key="'scan-'.$this->agent->id" />
