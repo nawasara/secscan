@@ -242,7 +242,10 @@ class HtmlSignalDetector
 
         // Iframe to external domain hidden in page
         if (preg_match_all('/<iframe[^>]+src=["\']https?:\/\/([^"\'\/]+)/i', $html, $m)) {
-            $externalIframes = array_filter($m[1], fn ($d) => ! str_contains($d, '.go.id'));
+            $externalIframes = array_filter(
+                $m[1],
+                fn ($d) => ! $this->isTrustedIframeDomain($d)
+            );
             if ($externalIframes) {
                 $score += 40;
                 $evidence['external_iframes'] = array_values(array_unique($externalIframes));
@@ -319,6 +322,62 @@ class HtmlSignalDetector
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Domains that are universally trusted as iframe sources on government sites.
+     * YouTube embeds, Google Maps, analytics widgets — all normal, never malware.
+     * Extend via config nawasara-secscan.trusted_iframe_domains.
+     */
+    private const TRUSTED_IFRAME_DOMAINS = [
+        // Google / YouTube
+        'www.youtube.com',
+        'youtube.com',
+        'www.youtube-nocookie.com',
+        'youtube-nocookie.com',
+        'www.google.com',
+        'google.com',
+        'maps.google.com',
+        'www.google.co.id',
+        'maps.google.co.id',
+        'www.googletagmanager.com',
+        'googletagmanager.com',
+        'www.google-analytics.com',
+        'google-analytics.com',
+        // Social media embeds — common on OPD sites
+        'www.facebook.com',
+        'facebook.com',
+        'www.instagram.com',
+        'instagram.com',
+        'platform.twitter.com',
+        'twitter.com',
+        // Mapping providers
+        'maps.googleapis.com',
+        'embed.waze.com',
+        'www.openstreetmap.org',
+        'openstreetmap.org',
+        // Indonesian gov infrastructure
+        'sso.ponorogo.go.id',
+    ];
+
+    private function isTrustedIframeDomain(string $domain): bool
+    {
+        // Always trust any .go.id subdomain
+        if (str_ends_with($domain, '.go.id') || $domain === 'go.id') {
+            return true;
+        }
+
+        $extra = config('nawasara-secscan.trusted_iframe_domains', []);
+        $all   = array_merge(self::TRUSTED_IFRAME_DOMAINS, $extra);
+
+        foreach ($all as $trusted) {
+            // Exact match or subdomain match (e.g. "youtube.com" also covers "www.youtube.com")
+            if ($domain === $trusted || str_ends_with($domain, '.'.$trusted)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private function extractTitle(string $html): string
     {

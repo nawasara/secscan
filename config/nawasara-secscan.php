@@ -109,4 +109,18 @@ return [
     'alerts' => [
         'cooldown_minutes' => env('SECSCAN_ALERT_COOLDOWN', 60),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trusted iframe domains (HTTP probe)
+    |--------------------------------------------------------------------------
+    | Domains listed here are NEVER flagged as suspicious iframes. YouTube,
+    | Google Maps, social media embeds, etc. are universally trusted and
+    | common on government sites. Add site-specific trusted domains here.
+    | The built-in list is in HtmlSignalDetector::TRUSTED_IFRAME_DOMAINS.
+    */
+    'trusted_iframe_domains' => [
+        // Add extra trusted domains per deployment if needed, e.g.:
+        // 'embed.example.go.id',
+    ],
 ];
