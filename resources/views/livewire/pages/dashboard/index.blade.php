@@ -20,6 +20,33 @@
             @endif
         </x-nawasara-ui::page-header>
 
+        {{-- Agent stats — always visible, even if database not configured --}}
+        @if ($this->agentStats['total'] > 0)
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                <x-nawasara-ui::stat-card compact
+                    label="Agents Online"
+                    :value="$this->agentStats['online'] . ' / ' . $this->agentStats['total']"
+                    color="success"
+                    icon="lucide-server" />
+                <x-nawasara-ui::stat-card compact
+                    label="Agents Offline"
+                    :value="$this->agentStats['offline']"
+                    :color="$this->agentStats['offline'] > 0 ? 'danger' : 'neutral'"
+                    icon="lucide-server-off" />
+                <x-nawasara-ui::stat-card compact
+                    label="Incident Kritis Hari Ini"
+                    :value="$this->agentStats['critical_today']"
+                    :color="$this->agentStats['critical_today'] > 0 ? 'danger' : 'neutral'"
+                    icon="lucide-octagon-alert" />
+                <div class="flex items-center justify-end">
+                    <x-nawasara-ui::button color="neutral" variant="outline" size="sm"
+                        :href="route('nawasara-secscan.agents')" wire:navigate>
+                        Kelola Agents →
+                    </x-nawasara-ui::button>
+                </div>
+            </div>
+        @endif
+
         @if (! $this->isConfigured)
             <x-nawasara-ui::empty-state
                 icon="lucide-shield-alert"
@@ -30,7 +57,7 @@
                 </x-nawasara-ui::button>
             </x-nawasara-ui::empty-state>
         @else
-            {{-- Stat cards --}}
+            {{-- Site scan stat cards --}}
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                 <x-nawasara-ui::stat-card compact
                     label="Kritis"

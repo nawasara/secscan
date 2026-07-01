@@ -33,11 +33,13 @@ class Table extends Component
     public function render()
     {
         $query = Agent::query()
+            ->withCount('incidents')
             ->when($this->search, fn ($q) => $q->where(function ($q) {
                 $q->where('name', 'like', "%{$this->search}%")
                   ->orWhere('hostname', 'like', "%{$this->search}%")
                   ->orWhere('ip_local', 'like', "%{$this->search}%");
             }))
+            ->when($this->filterStatus, fn ($q) => $q->where('status', $this->filterStatus))
             ->orderBy('last_seen_at', 'desc')
             ->orderBy('created_at', 'desc');
 

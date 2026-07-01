@@ -12,6 +12,7 @@ use Nawasara\Alerting\Models\AlertRule;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
 use Nawasara\Secscan\Jobs\ScanHttpJob;
 use Nawasara\Secscan\Jobs\ScanWordpressJob;
+use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Services\FindingScorer;
 use Nawasara\Secscan\Services\HtmlSignalDetector;
 use Nawasara\Secscan\Services\SiteHttpFetcher;
@@ -104,6 +105,16 @@ class SecscanServiceProvider extends ServiceProvider
                 ->name('nawasara-secscan:scan-wordpress')
                 ->cron("*/{$interval} * * * *")
                 ->withoutOverlapping(15);
+
+            // Mark agents offline if no heartbeat in last 3 minutes.
+            $schedule->call(function () {
+                Agent::where('status', Agent::STATUS_ONLINE)
+                    ->where('last_seen_at', '<', now()->subMinutes(3))
+                    ->update(['status' => Agent::STATUS_OFFLINE]);
+            })
+                ->name('nawasara-secscan:check-agent-status')
+                ->everyMinute()
+                ->withoutOverlapping(2);
 
             // F2 HTTP probe — runs less frequently (default every 6 hours).
             // Config is in minutes; convert to hours for cron (min 1h, max 24h).

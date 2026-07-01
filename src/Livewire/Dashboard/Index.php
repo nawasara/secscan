@@ -6,7 +6,9 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
 use Nawasara\Secscan\Jobs\ScanWordpressJob;
+use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\SecscanFinding;
+use Nawasara\Secscan\Models\SecurityIncident;
 
 class Index extends Component
 {
@@ -39,6 +41,20 @@ class Index extends Component
             'warning' => (clone $active)->where('severity', SecscanFinding::SEVERITY_WARNING)->count(),
             'open' => (clone $active)->where('status', SecscanFinding::STATUS_OPEN)->count(),
             'sites' => SecscanFinding::active()->distinct('db_name')->count('db_name'),
+        ];
+    }
+
+    /** @return array<string,int> */
+    #[Computed]
+    public function agentStats(): array
+    {
+        $threeMinAgo = now()->subMinutes(3);
+
+        return [
+            'total'           => Agent::count(),
+            'online'          => Agent::where('last_seen_at', '>=', $threeMinAgo)->count(),
+            'offline'         => Agent::whereNotNull('last_seen_at')->where('last_seen_at', '<', $threeMinAgo)->count(),
+            'critical_today'  => SecurityIncident::where('severity', 'critical')->whereDate('detected_at', today())->count(),
         ];
     }
 

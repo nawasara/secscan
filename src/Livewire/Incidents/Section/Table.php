@@ -20,9 +20,17 @@ class Table extends Component
     #[Url]
     public string $filterType = '';
 
+    public ?SecurityIncident $selectedIncident = null;
+
     public function updatedSearch(): void { $this->resetPage(); }
     public function updatedFilterSeverity(): void { $this->resetPage(); }
     public function updatedFilterType(): void { $this->resetPage(); }
+
+    public function openDetail(int $id): void
+    {
+        $this->selectedIncident = SecurityIncident::with('agent')->find($id);
+        $this->dispatch('modal-open:incident-detail-modal');
+    }
 
     public function render()
     {
