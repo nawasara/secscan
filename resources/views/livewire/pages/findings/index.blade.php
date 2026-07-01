@@ -314,26 +314,34 @@
 
         {{-- Incidents Agent tab --}}
         <x-nawasara-ui::page.card>
-            <div class="flex flex-wrap items-center gap-3 mb-4">
-                <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
+            {{-- Toolbar: search di kiri, filter-panel di kanan. --}}
+            <div class="space-y-2 mb-4">
+                <div class="flex flex-col md:flex-row md:flex-nowrap md:items-center gap-2">
+                    <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
 
-                <x-nawasara-ui::filter-panel
-                    :state="['incSeverity' => $incSeverity, 'incType' => $incType]"
-                    :dimensions="['incSeverity' => 'Severity', 'incType' => 'Tipe Insiden']">
+                    <div class="flex flex-wrap items-center gap-2 shrink-0">
+                        <x-nawasara-ui::filter-panel
+                            label="Filter"
+                            :state="['incSeverity' => $incSeverity, 'incType' => $incType]"
+                            :dimensions="['incSeverity' => 'Severity', 'incType' => 'Tipe Insiden']">
 
-                    <x-nawasara-ui::filter-group
-                        label="Severity"
-                        model="incSeverity"
-                        :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']" />
+                            <x-nawasara-ui::filter-group
+                                label="Severity"
+                                model="incSeverity"
+                                :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
+                                icon="lucide-circle-check" />
 
-                    <x-nawasara-ui::filter-group
-                        label="Tipe Insiden"
-                        model="incType"
-                        :items="$this->incidentTypeOptions" />
+                            <x-nawasara-ui::filter-group
+                                label="Tipe Insiden"
+                                model="incType"
+                                :items="$this->incidentTypeOptions"
+                                icon="lucide-shield-alert" />
 
-                </x-nawasara-ui::filter-panel>
+                        </x-nawasara-ui::filter-panel>
+                    </div>
+                </div>
 
-                <div data-filter-chips></div>
+                <div wire:ignore data-filter-chips></div>
             </div>
 
             @if ($this->incidents->isEmpty())
@@ -343,7 +351,7 @@
                     title="Tidak ada incidents"
                     description="Belum ada insiden yang dilaporkan oleh nawasara-agent." />
             @else
-                <x-nawasara-ui::table
+                <x-nawasara-ui::table stickyLast
                     :headers="['Severity', 'Tipe', 'Source IP', 'Skor', 'Agent', 'Terdeteksi', 'Correlated', '']">
                     <x-slot:table>
                         @foreach ($this->incidents as $inc)
@@ -384,13 +392,10 @@
                                         <span class="text-neutral-400 dark:text-neutral-500 text-sm">—</span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-3">
-                                    <x-nawasara-ui::icon-button
-                                        icon="lucide-eye"
-                                        tooltip="Lihat evidence"
-                                        placement="left"
-                                        x-on:click="$dispatch('open-modal', { id: 'secscan-incident-detail', loading: true })"
-                                        wire:click="openIncidentDetail({{ $inc->id }})" />
+                                <td class="px-4 py-3 text-right">
+                                    <x-nawasara-ui::dropdown-menu-action :id="$inc->id" :items="[
+                                        ['type' => 'click', 'label' => 'Lihat evidence', 'wire:click' => 'openIncidentDetail('.$inc->id.')', 'modal' => 'secscan-incident-detail', 'icon' => 'lucide-eye'],
+                                    ]" />
                                 </td>
                             </tr>
                         @endforeach
