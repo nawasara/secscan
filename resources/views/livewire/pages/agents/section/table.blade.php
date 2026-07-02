@@ -1,19 +1,32 @@
 <div>
-    <div class="flex flex-wrap items-center gap-3 mb-4">
-        <x-nawasara-ui::search-input model="search" placeholder="Cari nama, hostname, IP…" />
+    {{-- Toolbar: filter-panel kiri (shrink-0), search kanan (flex-1). --}}
+    <div class="space-y-2 mb-4">
+        <div class="flex flex-col md:flex-row md:flex-nowrap md:items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <x-nawasara-ui::filter-panel
+                    label="Filter"
+                    :state="['filterStatus' => $filterStatus]"
+                    :dimensions="['filterStatus' => 'Status']">
 
-        <x-nawasara-ui::filter-panel
-            :state="['filterStatus' => $filterStatus]"
-            :dimensions="['filterStatus' => 'Status']">
+                    <x-nawasara-ui::filter-group
+                        label="Status"
+                        model="filterStatus"
+                        :items="['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum Connect']"
+                        icon="lucide-activity" />
 
-            <x-nawasara-ui::filter-group
-                label="Status"
-                model="filterStatus"
-                :items="['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum Connect']" />
+                </x-nawasara-ui::filter-panel>
+            </div>
 
-        </x-nawasara-ui::filter-panel>
+            <x-nawasara-ui::search-input model="search" placeholder="Cari nama, hostname, IP…" />
+        </div>
 
-        <div data-filter-chips></div>
+        <div wire:ignore data-filter-chips></div>
+
+        @if ($search !== '')
+            <div class="flex flex-wrap items-center gap-2">
+                <x-nawasara-ui::filter-chip label="Cari: {{ $search }}" model="search" />
+            </div>
+        @endif
     </div>
 
     <x-nawasara-ui::page.card>
@@ -105,13 +118,10 @@
                             <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200 text-center font-medium">
                                 {{ number_format($agent->incidents_count) }}
                             </td>
-                            <td class="px-4 py-3">
-                                <x-nawasara-ui::icon-button
-                                    icon="lucide-external-link"
-                                    tooltip="Detail agent"
-                                    placement="left"
-                                    :href="route('nawasara-secscan.agents.show', $agent->agent_id)"
-                                    wire:navigate />
+                            <td class="px-4 py-3 text-right">
+                                <x-nawasara-ui::dropdown-menu-action :id="$agent->id" :items="[
+                                    ['type' => 'link', 'label' => 'Detail agent', 'href' => route('nawasara-secscan.agents.show', $agent->agent_id), 'navigate' => true, 'icon' => 'lucide-external-link'],
+                                ]" />
                             </td>
                         </tr>
                     @endforeach

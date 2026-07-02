@@ -6,9 +6,11 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Table extends Component
 {
+    use HasTimeWindow;
     use WithPagination;
 
     #[Url]
@@ -21,6 +23,15 @@ class Table extends Component
     public string $filterType = '';
 
     public ?SecurityIncident $selectedIncident = null;
+
+    /**
+     * Incidents accumulate over time; default to a 30-day window so the
+     * page isn't dominated by months-old attacker noise on first load.
+     */
+    protected function defaultTimeWindow(): string
+    {
+        return '30d';
+    }
 
     public function updatedSearch(): void { $this->resetPage(); }
     public function updatedFilterSeverity(): void { $this->resetPage(); }
@@ -35,6 +46,7 @@ class Table extends Component
     public function render()
     {
         $query = SecurityIncident::with('agent')
+            ->tap(fn ($q) => $this->applyTimeWindow($q, 'detected_at'))
             ->when($this->search, fn ($q) => $q->where('source_ip', 'like', "%{$this->search}%"))
             ->when($this->filterSeverity, fn ($q) => $q->where('severity', $this->filterSeverity))
             ->when($this->filterType, fn ($q) => $q->where('type', $this->filterType))

@@ -6,29 +6,14 @@
 
     <x-nawasara-ui::page.container>
         <x-nawasara-ui::page-header
-            title="Temuan Keamanan"
-            description="Indikasi situs ter-retas / judi online / malware dari pemindaian database, probe HTTP, dan laporan agent."
-            :count="($tab === 'incidents' ? $this->incidents->total() . ' incidents' : $this->rows->total() . ' temuan')" />
+            title="Temuan Website"
+            description="Indikasi situs ter-retas / judi online / malware dari pemindaian database dan probe HTTP."
+            :count="$this->rows->total() . ' temuan'">
+            <x-nawasara-ui::time-window
+                :window="$window" :from="$from" :to="$to"
+                :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+        </x-nawasara-ui::page-header>
 
-        {{-- Tab switcher --}}
-        <div class="flex gap-1 mb-5 border-b border-neutral-200 dark:border-neutral-700">
-            <button wire:click="$set('tab','findings')"
-                class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
-                    {{ $tab === 'findings'
-                        ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                        : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200' }}">
-                Temuan Website
-            </button>
-            <button wire:click="$set('tab','incidents')"
-                class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
-                    {{ $tab === 'incidents'
-                        ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                        : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200' }}">
-                Incidents Agent
-            </button>
-        </div>
-
-        @if ($tab === 'findings')
         @php
             $severityLabels = ['critical' => 'Kritis', 'warning' => 'Peringatan', 'info' => 'Info'];
             $statusLabels = \Nawasara\Secscan\Models\SecscanFinding::statusLabels();
@@ -310,190 +295,7 @@
             @endif
         </x-nawasara-ui::modal>
 
-        @elseif ($tab === 'incidents')
-
-        {{-- Incidents Agent tab --}}
-        <x-nawasara-ui::page.card>
-            {{-- Toolbar: filter-panel di kiri, search di kanan (sama seperti tab Temuan Website). --}}
-            <div class="space-y-2 mb-4">
-                <div class="flex flex-col md:flex-row md:flex-nowrap md:items-center gap-2">
-                    <div class="flex flex-wrap items-center gap-2 shrink-0">
-                        <x-nawasara-ui::filter-panel
-                            label="Filter"
-                            :state="['incSeverity' => $incSeverity, 'incType' => $incType]"
-                            :dimensions="['incSeverity' => 'Severity', 'incType' => 'Tipe Insiden']">
-
-                            <x-nawasara-ui::filter-group
-                                label="Severity"
-                                model="incSeverity"
-                                :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
-                                icon="lucide-octagon-alert" />
-
-                            <x-nawasara-ui::filter-group
-                                label="Tipe Insiden"
-                                model="incType"
-                                :items="$this->incidentTypeOptions"
-                                icon="lucide-shield-alert" />
-
-                        </x-nawasara-ui::filter-panel>
-                    </div>
-
-                    <x-nawasara-ui::search-input model="incSearch" placeholder="Cari IP sumber…" />
-                </div>
-
-                <div wire:ignore data-filter-chips></div>
-
-                @if ($incSearch !== '')
-                    <div class="flex flex-wrap items-center gap-2">
-                        <x-nawasara-ui::filter-chip label="Cari: {{ $incSearch }}" model="incSearch" />
-                    </div>
-                @endif
-            </div>
-
-            @if ($this->incidents->isEmpty())
-                <x-nawasara-ui::empty-state
-                    icon="lucide-shield-check"
-                    variant="celebrate"
-                    title="Tidak ada incidents"
-                    description="Belum ada insiden yang dilaporkan oleh nawasara-agent." />
-            @else
-                <x-nawasara-ui::table stickyLast
-                    :headers="['Severity', 'Tipe', 'Source IP', 'Skor', 'Agent', 'Terdeteksi', 'Correlated', '']">
-                    <x-slot:table>
-                        @foreach ($this->incidents as $inc)
-                            <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                                <td class="px-4 py-3">
-                                    <x-nawasara-ui::badge :color="$inc->severityColor()">
-                                        {{ ucfirst($inc->severity) }}
-                                    </x-nawasara-ui::badge>
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">
-                                    {{ $inc->typeLabel() }}
-                                </td>
-                                <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
-                                    @if ($inc->source_ip)
-                                        {{ $inc->source_ip }}
-                                    @else
-                                        <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
-                                    {{ $inc->score }}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-300">
-                                    @if ($inc->agent)
-                                        <div>{{ $inc->agent->name }}</div>
-                                        <div class="text-xs text-neutral-400 dark:text-neutral-500">{{ $inc->agent->hostname }}</div>
-                                    @else
-                                        <span class="text-neutral-400">—</span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                                    {{ $inc->detected_at?->diffForHumans() }}
-                                </td>
-                                <td class="px-4 py-3">
-                                    @if ($inc->correlated)
-                                        <x-nawasara-ui::badge color="danger">Ya</x-nawasara-ui::badge>
-                                    @else
-                                        <span class="text-neutral-400 dark:text-neutral-500 text-sm">—</span>
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-right">
-                                    <x-nawasara-ui::dropdown-menu-action :id="$inc->id" :items="[
-                                        ['type' => 'click', 'label' => 'Lihat evidence', 'wire:click' => 'openIncidentDetail('.$inc->id.')', 'modal' => 'secscan-incident-detail', 'icon' => 'lucide-eye'],
-                                    ]" />
-                                </td>
-                            </tr>
-                        @endforeach
-                    </x-slot:table>
-                </x-nawasara-ui::table>
-
-                <div class="mt-4">
-                    {{ $this->incidents->links() }}
-                </div>
-            @endif
-        </x-nawasara-ui::page.card>
-
-        @endif
 
     </x-nawasara-ui::page.container>
 
-    {{-- Incident evidence modal (Incidents Agent tab) --}}
-    <x-nawasara-ui::modal id="secscan-incident-detail" title="Detail Insiden">
-        @if ($this->incidentDetail)
-            @php($inc = $this->incidentDetail)
-            <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Tipe</p>
-                        <p class="text-neutral-800 dark:text-neutral-100 font-medium">{{ $inc->typeLabel() }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Severity</p>
-                        <x-nawasara-ui::badge :color="$inc->severityColor()">{{ ucfirst($inc->severity) }}</x-nawasara-ui::badge>
-                    </div>
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Source IP</p>
-                        <p class="font-mono text-neutral-800 dark:text-neutral-100">{{ $inc->source_ip ?? '—' }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Skor</p>
-                        <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $inc->score }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Terdeteksi</p>
-                        <p class="text-neutral-700 dark:text-neutral-200">{{ $inc->detected_at?->format('d M Y H:i:s') }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Agent</p>
-                        <p class="text-neutral-700 dark:text-neutral-200">{{ $inc->agent?->name ?? '—' }}</p>
-                    </div>
-                </div>
-
-                @if ($inc->evidence)
-                    <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">Evidence</p>
-                        <div class="space-y-2">
-                            @foreach ($inc->evidence as $ev)
-                                <div class="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 text-xs font-mono">
-                                    <div class="text-neutral-400 dark:text-neutral-500 mb-1">
-                                        {{ $ev['timestamp'] ?? '' }}
-                                        @if (!empty($ev['matched_rule']))
-                                            · <span class="text-emerald-600 dark:text-emerald-400">{{ $ev['matched_rule'] }}</span>
-                                        @endif
-                                    </div>
-                                    <div class="text-neutral-800 dark:text-neutral-200 break-all">{{ $ev['raw'] ?? json_encode($ev) }}</div>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
-
-                @if ($inc->correlated && $inc->correlated_group_id)
-                    <div class="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800/50">
-                        <x-lucide-link-2 class="size-4 text-red-600 dark:text-red-400 shrink-0" />
-                        <p class="text-xs text-red-700 dark:text-red-300">
-                            Insiden ini merupakan bagian dari rantai serangan (group: <span class="font-mono">{{ $inc->correlated_group_id }}</span>)
-                        </p>
-                    </div>
-                @endif
-            </div>
-
-            <x-slot:footer>
-                @if ($inc->source_ip)
-                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
-                       wire:navigate
-                       class="text-sm text-emerald-600 dark:text-emerald-400 hover:underline">
-                        Lihat semua insiden dari IP ini →
-                    </a>
-                @else
-                    <span class="text-sm text-neutral-400 dark:text-neutral-600">
-                        Tidak ada source IP (filesystem finding)
-                    </span>
-                @endif
-            </x-slot:footer>
-        @else
-            <x-nawasara-ui::loading />
-        @endif
-    </x-nawasara-ui::modal>
 </div>

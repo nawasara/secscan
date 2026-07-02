@@ -19,7 +19,7 @@ return [
                 'navigate' => true,
             ],
             [
-                'label' => 'Temuan',
+                'label' => 'Temuan Website',
                 'icon' => 'lucide-bug',
                 'url' => url($prefix.'/findings'),
                 'permission' => 'secscan.view',

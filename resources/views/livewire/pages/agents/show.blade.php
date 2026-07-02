@@ -155,19 +155,25 @@
                 <x-nawasara-ui::page.card>
                     <div class="flex items-center justify-between mb-4">
                         <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Insiden Keamanan</p>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <x-nawasara-ui::filter-panel
+                                label="Filter"
                                 :state="['filterSeverity' => $filterSeverity]"
                                 :dimensions="['filterSeverity' => 'Severity']">
                                 <x-nawasara-ui::filter-group
                                     label="Severity"
                                     model="filterSeverity"
-                                    :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']" />
+                                    :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
+                                    icon="lucide-octagon-alert" />
                             </x-nawasara-ui::filter-panel>
+
+                            <x-nawasara-ui::time-window
+                                :window="$window" :from="$from" :to="$to"
+                                :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
                         </div>
                     </div>
 
-                    <div data-filter-chips class="mb-3"></div>
+                    <div wire:ignore data-filter-chips class="mb-3"></div>
 
                     @if ($this->incidents->isEmpty())
                         <x-nawasara-ui::empty-state inline variant="celebrate"

@@ -1,24 +1,42 @@
 <div>
-    <div class="flex flex-wrap items-center gap-3 mb-4">
-        <x-nawasara-ui::search-input model="search" placeholder="Cari IP…" />
+    {{-- Toolbar: filter-panel kiri (shrink-0) + time-window, search kanan (flex-1). --}}
+    <div class="space-y-2 mb-4">
+        <div class="flex flex-col md:flex-row md:flex-nowrap md:items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <x-nawasara-ui::filter-panel
+                    label="Filter"
+                    :state="['filterSeverity' => $filterSeverity, 'filterType' => $filterType]"
+                    :dimensions="['filterSeverity' => 'Severity', 'filterType' => 'Tipe Insiden']">
 
-        <x-nawasara-ui::filter-panel
-            :state="['filterSeverity' => $filterSeverity, 'filterType' => $filterType]"
-            :dimensions="['filterSeverity' => 'Severity', 'filterType' => 'Tipe Insiden']">
+                    <x-nawasara-ui::filter-group
+                        label="Severity"
+                        model="filterSeverity"
+                        :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
+                        icon="lucide-octagon-alert" />
 
-            <x-nawasara-ui::filter-group
-                label="Severity"
-                model="filterSeverity"
-                :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']" />
+                    <x-nawasara-ui::filter-group
+                        label="Tipe Insiden"
+                        model="filterType"
+                        :items="$typeOptions"
+                        icon="lucide-shield-alert" />
 
-            <x-nawasara-ui::filter-group
-                label="Tipe Insiden"
-                model="filterType"
-                :items="$typeOptions" />
+                </x-nawasara-ui::filter-panel>
 
-        </x-nawasara-ui::filter-panel>
+                <x-nawasara-ui::time-window
+                    :window="$window" :from="$from" :to="$to"
+                    :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+            </div>
 
-        <div data-filter-chips></div>
+            <x-nawasara-ui::search-input model="search" placeholder="Cari IP sumber…" />
+        </div>
+
+        <div wire:ignore data-filter-chips></div>
+
+        @if ($search !== '')
+            <div class="flex flex-wrap items-center gap-2">
+                <x-nawasara-ui::filter-chip label="Cari: {{ $search }}" model="search" />
+            </div>
+        @endif
     </div>
 
     <x-nawasara-ui::page.card>
@@ -29,7 +47,7 @@
                 title="Tidak ada insiden"
                 description="Belum ada insiden yang dilaporkan oleh agent." />
         @else
-            <x-nawasara-ui::table
+            <x-nawasara-ui::table stickyLast
                 :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Agent', 'Terdeteksi', 'Correlated', '']">
                 <x-slot:table>
                     @foreach ($incidents as $inc)
@@ -80,13 +98,10 @@
                                     <span class="text-neutral-400 dark:text-neutral-500 text-sm">—</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3">
-                                <x-nawasara-ui::icon-button
-                                    icon="lucide-eye"
-                                    tooltip="Lihat evidence"
-                                    placement="left"
-                                    x-on:click="$dispatch('open-modal', { id: 'incident-detail-modal', loading: true })"
-                                    wire:click="openDetail({{ $inc->id }})" />
+                            <td class="px-4 py-3 text-right">
+                                <x-nawasara-ui::dropdown-menu-action :id="$inc->id" :items="[
+                                    ['type' => 'click', 'label' => 'Lihat evidence', 'wire:click' => 'openDetail('.$inc->id.')', 'modal' => 'incident-detail-modal', 'icon' => 'lucide-eye'],
+                                ]" />
                             </td>
                         </tr>
                     @endforeach

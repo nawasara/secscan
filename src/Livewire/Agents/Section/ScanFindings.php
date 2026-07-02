@@ -5,11 +5,12 @@ namespace Nawasara\Secscan\Livewire\Agents\Section;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\AgentScanFinding;
+use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class ScanFindings extends Component
 {
+    use HasTimeWindow;
     use WithPagination;
 
     public int $agentDbId;       // nawasara_agents.id (not the agent_id string)
@@ -26,9 +27,16 @@ class ScanFindings extends Component
         $this->agentDbId = $agentDbId;
     }
 
+    /** Scan findings accumulate; default to a 30-day window. */
+    protected function defaultTimeWindow(): string
+    {
+        return '30d';
+    }
+
     public function findings()
     {
         return AgentScanFinding::where('agent_id', $this->agentDbId)
+            ->tap(fn ($q) => $this->applyTimeWindow($q, 'detected_at'))
             ->when($this->filterStatus,   fn ($q) => $q->where('status', $this->filterStatus))
             ->when($this->filterSeverity, fn ($q) => $q->where('severity', $this->filterSeverity))
             ->when($this->filterCategory, fn ($q) => $q->where('category', $this->filterCategory))

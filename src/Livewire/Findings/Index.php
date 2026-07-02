@@ -9,27 +9,15 @@ use Livewire\WithPagination;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Models\SecscanFindingHistory;
-use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Index extends Component
 {
+    use HasTimeWindow;
     use WithPagination;
 
     #[Url]
-    public string $tab = 'findings'; // findings|incidents
-
-    #[Url]
     public string $search = '';
-
-    // Incidents tab filters
-    #[Url]
-    public string $incSearch = '';
-
-    #[Url]
-    public string $incSeverity = '';
-
-    #[Url]
-    public string $incType = '';
 
     /** @var array<int,string> */
     #[Url]
@@ -52,19 +40,20 @@ class Index extends Component
     /** Finding currently open in the detail/triage modal. */
     public ?int $detailId = null;
 
-    /** Incident currently open in the incident evidence modal (Incidents Agent tab). */
-    public ?int $incidentDetailId = null;
-
     public string $triageReason = '';
 
-    public function updatedTab(): void
+    /**
+     * Security findings span a long history and users triage by recency,
+     * so default to a 30-day window rather than the trait's 7d default.
+     */
+    protected function defaultTimeWindow(): string
     {
-        $this->resetPage();
+        return '30d';
     }
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter', 'sourceFilter', 'incSearch', 'incSeverity', 'incType'], true)) {
+        if (in_array($property, ['search', 'severityFilter', 'statusFilter', 'threatFilter', 'sourceFilter'], true)) {
             $this->resetPage();
         }
     }
@@ -74,20 +63,6 @@ class Index extends Component
         $this->detailId = $id;
         $this->triageReason = '';
         $this->dispatch('modal-open:secscan-finding-detail');
-    }
-
-    public function openIncidentDetail(int $id): void
-    {
-        $this->incidentDetailId = $id;
-        $this->dispatch('modal-open:secscan-incident-detail');
-    }
-
-    #[Computed]
-    public function incidentDetail(): ?SecurityIncident
-    {
-        return $this->incidentDetailId
-            ? SecurityIncident::with('agent')->find($this->incidentDetailId)
-            : null;
     }
 
     public function acknowledge(int $id): void
@@ -167,35 +142,10 @@ class Index extends Component
     }
 
     #[Computed]
-    public function incidents()
-    {
-        return SecurityIncident::with('agent')
-            ->when($this->incSearch, fn ($q) => $q->where('source_ip', 'like', "%{$this->incSearch}%"))
-            ->when($this->incSeverity, fn ($q) => $q->where('severity', $this->incSeverity))
-            ->when($this->incType, fn ($q) => $q->where('type', $this->incType))
-            ->orderByRaw("FIELD(severity, 'critical','high','medium','info')")
-            ->orderByDesc('detected_at')
-            ->paginate($this->perPage);
-    }
-
-    #[Computed]
-    public function incidentTypeOptions(): array
-    {
-        return SecurityIncident::query()
-            ->selectRaw('type, COUNT(*) as cnt')
-            ->groupBy('type')
-            ->orderByDesc('cnt')
-            ->limit(20)
-            ->pluck('cnt', 'type')
-            ->keys()
-            ->mapWithKeys(fn ($t) => [$t => ucwords(str_replace('_', ' ', $t))])
-            ->toArray();
-    }
-
-    #[Computed]
     public function rows()
     {
         return SecscanFinding::query()
+            ->tap(fn ($q) => $this->applyTimeWindow($q, 'last_detected_at'))
             ->when($this->search !== '', function ($q) {
                 $q->where(function ($sub) {
                     $sub->where('db_name', 'like', "%{$this->search}%")

@@ -11,12 +11,17 @@
     <x-nawasara-ui::page.container>
         <x-nawasara-ui::page-header
             :title="'IP: ' . $ip"
-            description="Timeline semua insiden keamanan dari sumber IP ini">
-            <a href="https://ipinfo.io/{{ $ip }}" target="_blank" rel="noopener noreferrer"
-               class="inline-flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-                <x-lucide-external-link class="size-3.5" />
-                WhoIs
-            </a>
+            description="Timeline insiden keamanan dari sumber IP ini">
+            <div class="flex flex-wrap items-center gap-3">
+                <x-nawasara-ui::time-window
+                    :window="$window" :from="$from" :to="$to"
+                    :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+                <a href="https://ipinfo.io/{{ $ip }}" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                    <x-lucide-external-link class="size-3.5" />
+                    WhoIs
+                </a>
+            </div>
         </x-nawasara-ui::page-header>
 
         {{-- Summary stats --}}
@@ -101,17 +106,30 @@
 
                             <div class="space-y-4">
                                 @foreach ($this->incidents as $inc)
+                                    @php
+                                        // Precompute severity colour classes. Inline @if inside a
+                                        // lucide component attribute compiles to a PHP if-block that
+                                        // breaks the SVG component's attribute parser, so resolve here.
+                                        $dotBorder = match ($inc->severity) {
+                                            'critical' => 'border-red-500',
+                                            'high' => 'border-orange-400',
+                                            'medium' => 'border-blue-400',
+                                            default => 'border-neutral-300 dark:border-neutral-600',
+                                        };
+                                        $dotIconColor = match ($inc->severity) {
+                                            'critical' => 'text-red-500',
+                                            'high' => 'text-orange-400',
+                                            'medium' => 'text-blue-400',
+                                            default => 'text-neutral-400',
+                                        };
+                                    @endphp
                                     <div class="relative flex gap-4">
                                         {{-- Dot --}}
-                                        <div class="relative z-10 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border-2 bg-white dark:bg-neutral-900
-                                            @if ($inc->severity === 'critical') border-red-500
-                                            @elseif ($inc->severity === 'high') border-orange-400
-                                            @elseif ($inc->severity === 'medium') border-blue-400
-                                            @else border-neutral-300 dark:border-neutral-600 @endif">
+                                        <div class="relative z-10 shrink-0 flex items-center justify-center w-9 h-9 rounded-full border-2 bg-white dark:bg-neutral-900 {{ $dotBorder }}">
                                             @if ($inc->correlated)
-                                                <x-lucide-link-2 class="size-4 @if ($inc->severity === 'critical') text-red-500 @elseif ($inc->severity === 'high') text-orange-400 @else text-blue-400 @endif" />
+                                                <x-lucide-link-2 class="size-4 {{ $dotIconColor }}" />
                                             @else
-                                                <x-lucide-shield-alert class="size-4 @if ($inc->severity === 'critical') text-red-500 @elseif ($inc->severity === 'high') text-orange-400 @elseif ($inc->severity === 'medium') text-blue-400 @else text-neutral-400 @endif" />
+                                                <x-lucide-shield-alert class="size-4 {{ $dotIconColor }}" />
                                             @endif
                                         </div>
 

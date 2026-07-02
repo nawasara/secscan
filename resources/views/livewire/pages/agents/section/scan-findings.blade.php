@@ -23,27 +23,35 @@
             color="danger" />
     </div>
 
-    {{-- Filters --}}
-    <div class="flex items-center gap-2 mb-3">
+    {{-- Filters: filter-panel + time-window --}}
+    <div class="flex flex-wrap items-center gap-2 mb-3">
         <x-nawasara-ui::filter-panel
+            label="Filter"
             :state="['filterStatus' => $filterStatus, 'filterSeverity' => $filterSeverity, 'filterCategory' => $filterCategory]"
             :dimensions="['filterStatus' => 'Status', 'filterSeverity' => 'Severity', 'filterCategory' => 'Kategori']">
             <x-nawasara-ui::filter-group
                 label="Status"
                 model="filterStatus"
-                :items="['open' => 'Open', 'acknowledged' => 'Acknowledged', 'resolved' => 'Resolved', 'false_positive' => 'False Positive']" />
+                :items="['open' => 'Open', 'acknowledged' => 'Acknowledged', 'resolved' => 'Resolved', 'false_positive' => 'False Positive']"
+                icon="lucide-list-checks" />
             <x-nawasara-ui::filter-group
                 label="Severity"
                 model="filterSeverity"
-                :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium']" />
+                :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium']"
+                icon="lucide-octagon-alert" />
             <x-nawasara-ui::filter-group
                 label="Kategori"
                 model="filterCategory"
-                :items="['webshell' => 'Webshell', 'backdoor' => 'Backdoor', 'exploit' => 'Exploit Artifact', 'integrity' => 'File Integrity']" />
+                :items="['webshell' => 'Webshell', 'backdoor' => 'Backdoor', 'exploit' => 'Exploit Artifact', 'integrity' => 'File Integrity']"
+                icon="lucide-bug" />
         </x-nawasara-ui::filter-panel>
+
+        <x-nawasara-ui::time-window
+            :window="$window" :from="$from" :to="$to"
+            :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
     </div>
 
-    <div data-filter-chips class="mb-3"></div>
+    <div wire:ignore data-filter-chips class="mb-3"></div>
 
     @if ($findings->isEmpty())
         <x-nawasara-ui::empty-state inline variant="celebrate"
@@ -91,28 +99,22 @@
                                 {{ $finding->detected_at?->diffForHumans() }}
                             </span>
                         </td>
-                        <td class="px-4 py-3">
-                            <div class="flex items-center gap-1">
-                                @if ($finding->isOpen())
-                                    <x-nawasara-ui::icon-button
-                                        icon="lucide-check"
-                                        tooltip="Acknowledge"
-                                        placement="left"
-                                        wire:click="openTriage({{ $finding->id }}, 'acknowledge')" />
-                                    <x-nawasara-ui::icon-button
-                                        icon="lucide-shield-off"
-                                        tooltip="False Positive"
-                                        placement="left"
-                                        wire:click="openTriage({{ $finding->id }}, 'false_positive')" />
-                                @endif
-                                @if (in_array($finding->status, ['open', 'acknowledged']))
-                                    <x-nawasara-ui::icon-button
-                                        icon="lucide-check-check"
-                                        tooltip="Mark Resolved"
-                                        placement="left"
-                                        wire:click="openTriage({{ $finding->id }}, 'resolve')" />
-                                @endif
-                            </div>
+                        <td class="px-4 py-3 text-right">
+                            @php
+                                $triageItems = [];
+                                if ($finding->isOpen()) {
+                                    $triageItems[] = ['type' => 'click', 'label' => 'Acknowledge', 'wire:click' => "openTriage({$finding->id}, 'acknowledge')", 'modal' => 'scan-triage-'.$agentDbId, 'icon' => 'lucide-check'];
+                                    $triageItems[] = ['type' => 'click', 'label' => 'False Positive', 'wire:click' => "openTriage({$finding->id}, 'false_positive')", 'modal' => 'scan-triage-'.$agentDbId, 'icon' => 'lucide-shield-off'];
+                                }
+                                if (in_array($finding->status, ['open', 'acknowledged'])) {
+                                    $triageItems[] = ['type' => 'click', 'label' => 'Mark Resolved', 'wire:click' => "openTriage({$finding->id}, 'resolve')", 'modal' => 'scan-triage-'.$agentDbId, 'icon' => 'lucide-check-check'];
+                                }
+                            @endphp
+                            @if (! empty($triageItems))
+                                <x-nawasara-ui::dropdown-menu-action :id="$finding->id" :items="$triageItems" />
+                            @else
+                                <span class="text-neutral-400 dark:text-neutral-600 text-sm">—</span>
+                            @endif
                         </td>
                     </tr>
                 @endforeach

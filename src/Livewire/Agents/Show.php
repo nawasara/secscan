@@ -3,14 +3,15 @@
 namespace Nawasara\Secscan\Livewire\Agents;
 
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Show extends Component
 {
+    use HasTimeWindow;
     use WithPagination;
 
     public string $agentId = '';
@@ -20,6 +21,12 @@ class Show extends Component
     {
         $this->agentId = $agentId;
         $this->authorize('secscan.agent.view');
+    }
+
+    /** Per-agent incidents span a long history; default to 30 days. */
+    protected function defaultTimeWindow(): string
+    {
+        return '30d';
     }
 
     #[Computed]
@@ -54,6 +61,7 @@ class Show extends Component
     public function incidents()
     {
         return $this->agent->incidents()
+            ->tap(fn ($q) => $this->applyTimeWindow($q, 'detected_at'))
             ->when($this->filterSeverity, fn ($q) => $q->where('severity', $this->filterSeverity))
             ->orderByRaw("FIELD(severity, 'critical','high','medium','info')")
             ->orderByDesc('detected_at')
