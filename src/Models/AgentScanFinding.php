@@ -15,13 +15,14 @@ class AgentScanFinding extends Model
         'description', 'matched_line',
         'file_size', 'file_mtime',
         'status', 'triaged_by', 'triaged_at', 'triage_note',
-        'detected_at',
+        'detected_at', 'last_seen_at',
     ];
 
     protected $casts = [
-        'file_mtime'  => 'datetime',
-        'triaged_at'  => 'datetime',
-        'detected_at' => 'datetime',
+        'file_mtime'   => 'datetime',
+        'triaged_at'   => 'datetime',
+        'detected_at'  => 'datetime',
+        'last_seen_at' => 'datetime',
     ];
 
     const STATUS_OPEN           = 'open';

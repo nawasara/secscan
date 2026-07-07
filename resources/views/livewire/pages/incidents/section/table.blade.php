@@ -48,7 +48,7 @@
                 description="Belum ada insiden yang dilaporkan oleh agent." />
         @else
             <x-nawasara-ui::table stickyLast
-                :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Agent', 'Terdeteksi', 'Correlated', '']">
+                :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Kejadian', 'Agent', 'Terdeteksi', 'Terakhir', '']">
                 <x-slot:table>
                     @foreach ($incidents as $inc)
                         <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -58,7 +58,12 @@
                                 </x-nawasara-ui::badge>
                             </td>
                             <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">
-                                {{ $inc->typeLabel() }}
+                                <span class="inline-flex items-center gap-1.5">
+                                    {{ $inc->typeLabel() }}
+                                    @if ($inc->correlated)
+                                        <x-nawasara-ui::badge color="danger">Chain</x-nawasara-ui::badge>
+                                    @endif
+                                </span>
                             </td>
                             <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
                                 @if($inc->source_ip)
@@ -73,6 +78,13 @@
                             </td>
                             <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                                 {{ $inc->score }}
+                            </td>
+                            <td class="px-4 py-3 text-sm">
+                                @if ($inc->occurrences > 1)
+                                    <x-nawasara-ui::badge color="warning">×{{ number_format($inc->occurrences) }}</x-nawasara-ui::badge>
+                                @else
+                                    <span class="text-neutral-400 dark:text-neutral-500">1</span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-300">
                                 @if ($inc->agent)
@@ -91,12 +103,10 @@
                                     {{ $inc->detected_at?->diffForHumans() }}
                                 </span>
                             </td>
-                            <td class="px-4 py-3">
-                                @if ($inc->correlated)
-                                    <x-nawasara-ui::badge color="danger">Ya</x-nawasara-ui::badge>
-                                @else
-                                    <span class="text-neutral-400 dark:text-neutral-500 text-sm">—</span>
-                                @endif
+                            <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                                <span title="{{ ($inc->last_seen_at ?? $inc->detected_at)?->format('d M Y H:i:s') }}">
+                                    {{ ($inc->last_seen_at ?? $inc->detected_at)?->diffForHumans() }}
+                                </span>
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <x-nawasara-ui::dropdown-menu-action :id="$inc->id" :items="[
@@ -136,8 +146,16 @@
                         <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $selectedIncident->score }}</p>
                     </div>
                     <div>
-                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Terdeteksi</p>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Terdeteksi Pertama</p>
                         <p class="text-neutral-700 dark:text-neutral-200">{{ $selectedIncident->detected_at?->format('d M Y H:i:s') }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Terakhir Terlihat</p>
+                        <p class="text-neutral-700 dark:text-neutral-200">{{ ($selectedIncident->last_seen_at ?? $selectedIncident->detected_at)?->format('d M Y H:i:s') }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Jumlah Kejadian</p>
+                        <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ number_format($selectedIncident->occurrences) }}×</p>
                     </div>
                     <div>
                         <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Agent</p>

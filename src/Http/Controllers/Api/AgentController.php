@@ -73,13 +73,46 @@ class AgentController extends Controller
             'incidents.*.metadata'    => 'nullable|array',
         ]);
 
-        $created = 0;
-        $skipped = 0;
+        $windowHours = (int) config('nawasara-secscan.agent.incident_aggregation_hours', 24);
+        $evidenceCap = (int) config('nawasara-secscan.agent.incident_evidence_cap', 20);
+
+        $created    = 0;
+        $aggregated = 0;
 
         foreach ($data['incidents'] as $inc) {
-            $exists = SecurityIncident::where('incident_id', $inc['incident_id'])->exists();
-            if ($exists) {
-                $skipped++;
+            $detectedAt = \Carbon\Carbon::parse($inc['detected_at']);
+            $sourceIp   = $inc['source_ip'] ?: null;
+
+            // Exact re-send: deterministic scanner IDs or retried buffered batches.
+            $existing = SecurityIncident::where('incident_id', $inc['incident_id'])->first();
+
+            // Logical duplicate: an ongoing attack (same agent + type + source IP)
+            // keeps crossing the agent threshold and re-emits with a fresh random
+            // ID. Fold it into the still-active incident instead of a new row.
+            if (! $existing && $sourceIp) {
+                $existing = SecurityIncident::where('agent_id', $agent->id)
+                    ->where('type', $inc['type'])
+                    ->where('source_ip', $sourceIp)
+                    ->where('last_seen_at', '>=', now()->subHours($windowHours))
+                    ->orderByDesc('last_seen_at')
+                    ->first();
+            }
+
+            if ($existing) {
+                $lastSeen = $existing->last_seen_at ?? $existing->detected_at;
+
+                $existing->update([
+                    'occurrences'  => $existing->occurrences + 1,
+                    'last_seen_at' => $detectedAt->greaterThan($lastSeen) ? $detectedAt : $lastSeen,
+                    'score'        => max($existing->score, $inc['score']),
+                    'severity'     => SecurityIncident::maxSeverity($existing->severity, $inc['severity']),
+                    'correlated'   => $existing->correlated || ($inc['correlated'] ?? false),
+                    'evidence'     => array_slice(
+                        array_merge($existing->evidence ?? [], $inc['evidence']),
+                        -$evidenceCap
+                    ),
+                ]);
+                $aggregated++;
                 continue;
             }
 
@@ -88,12 +121,14 @@ class AgentController extends Controller
                 'agent_id'     => $agent->id,
                 'type'         => $inc['type'],
                 'severity'     => $inc['severity'],
-                'source_ip'    => $inc['source_ip'] ?: null,
+                'source_ip'    => $sourceIp,
                 'score'        => $inc['score'],
+                'occurrences'  => 1,
                 'correlated'   => $inc['correlated'] ?? false,
                 'evidence'     => $inc['evidence'],
                 'metadata'     => $inc['metadata'] ?? null,
                 'detected_at'  => $inc['detected_at'],
+                'last_seen_at' => $inc['detected_at'],
             ]);
             $created++;
         }
@@ -101,7 +136,7 @@ class AgentController extends Controller
         // Update agent status
         $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
 
-        return response()->json(['success' => true, 'created' => $created, 'skipped' => $skipped]);
+        return response()->json(['success' => true, 'created' => $created, 'aggregated' => $aggregated]);
     }
 
     /**
@@ -246,9 +281,42 @@ class AgentController extends Controller
             'detected_at'  => 'nullable|integer',  // unix timestamp
         ]);
 
-        // Deduplicate by finding_id
-        if (AgentScanFinding::where('finding_id', $data['finding_id'])->exists()) {
-            return response()->json(['success' => true, 'skipped' => true]);
+        $seenAt = isset($data['detected_at'])
+            ? \Carbon\Carbon::createFromTimestamp($data['detected_at'])
+            : now();
+
+        // Deduplicate: exact finding_id (deterministic hash from agent ≥ 0.4),
+        // then fall back to logical identity (same agent + path + signature) so
+        // older agents that still send random IDs don't stack duplicate rows.
+        $existing = AgentScanFinding::where('finding_id', $data['finding_id'])->first()
+            ?? AgentScanFinding::where('agent_id', $agent->id)
+                ->where('path', $data['path'])
+                ->where('signature_id', $data['signature_id'])
+                ->orderByDesc('detected_at')
+                ->first();
+
+        if ($existing) {
+            $updates = [
+                'last_seen_at' => $seenAt,
+                'sig_name'     => $data['sig_name'],
+                'severity'     => $data['severity'],
+                'score'        => max($existing->score, $data['score']),
+                'description'  => $data['description'] ?? $existing->description,
+                'matched_line' => $data['matched_line'] ?? $existing->matched_line,
+                'file_size'    => $data['file_size'] ?? $existing->file_size,
+                'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : $existing->file_mtime,
+            ];
+
+            // The file was marked clean but the agent still detects it → reopen.
+            // acknowledged / false_positive keep their status, only last_seen moves.
+            if ($existing->status === AgentScanFinding::STATUS_RESOLVED) {
+                $updates['status'] = AgentScanFinding::STATUS_OPEN;
+            }
+
+            $existing->update($updates);
+            $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
+
+            return response()->json(['success' => true, 'updated' => true]);
         }
 
         AgentScanFinding::create([
@@ -265,7 +333,8 @@ class AgentController extends Controller
             'file_size'    => $data['file_size'] ?? null,
             'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : null,
             'status'       => AgentScanFinding::STATUS_OPEN,
-            'detected_at'  => isset($data['detected_at']) ? \Carbon\Carbon::createFromTimestamp($data['detected_at']) : now(),
+            'detected_at'  => $seenAt,
+            'last_seen_at' => $seenAt,
         ]);
 
         $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);

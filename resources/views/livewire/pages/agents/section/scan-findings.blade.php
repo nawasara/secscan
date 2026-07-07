@@ -60,7 +60,7 @@
             description="{{ $filterStatus === 'open' ? 'Tidak ada file berbahaya terdeteksi.' : 'Tidak ada finding dengan filter ini.' }}" />
     @else
         <x-nawasara-ui::table
-            :headers="['Severity', 'Kategori', 'Signature', 'Path', 'Status', 'Terdeteksi', '']"
+            :headers="['Severity', 'Kategori', 'Signature', 'Path', 'Status', 'Terdeteksi', 'Terakhir', '']"
             :stickyLast="true">
             <x-slot:table>
                 @foreach ($findings as $finding)
@@ -97,6 +97,11 @@
                         <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
                             <span title="{{ $finding->detected_at?->format('d M Y H:i:s') }}">
                                 {{ $finding->detected_at?->diffForHumans() }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                            <span title="{{ ($finding->last_seen_at ?? $finding->detected_at)?->format('d M Y H:i:s') }}">
+                                {{ ($finding->last_seen_at ?? $finding->detected_at)?->diffForHumans() }}
                             </span>
                         </td>
                         <td class="px-4 py-3 text-right">

@@ -119,6 +119,14 @@ return [
     */
     'agent' => [
         'github_repo' => env('SECSCAN_AGENT_GITHUB_REPO', 'nawasara/agent'),
+
+        // Incoming incidents with the same agent + type + source_ip whose
+        // last_seen_at falls within this window are folded into the existing
+        // row (occurrences++, last_seen_at bumped) instead of a new row.
+        'incident_aggregation_hours' => env('SECSCAN_INCIDENT_AGG_HOURS', 24),
+
+        // Max evidence entries kept per incident when aggregating (newest win).
+        'incident_evidence_cap' => env('SECSCAN_INCIDENT_EVIDENCE_CAP', 20),
     ],
 
     /*

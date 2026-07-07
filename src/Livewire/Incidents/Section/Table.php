@@ -45,13 +45,15 @@ class Table extends Component
 
     public function render()
     {
+        // Window + order by last_seen_at so an ongoing (aggregated) attack that
+        // started weeks ago still surfaces in the recent window.
         $query = SecurityIncident::with('agent')
-            ->tap(fn ($q) => $this->applyTimeWindow($q, 'detected_at'))
+            ->tap(fn ($q) => $this->applyTimeWindow($q, 'last_seen_at'))
             ->when($this->search, fn ($q) => $q->where('source_ip', 'like', "%{$this->search}%"))
             ->when($this->filterSeverity, fn ($q) => $q->where('severity', $this->filterSeverity))
             ->when($this->filterType, fn ($q) => $q->where('type', $this->filterType))
             ->orderByRaw("FIELD(severity, 'critical','high','medium','info')")
-            ->orderByDesc('detected_at');
+            ->orderByDesc('last_seen_at');
 
         $incidents = $query->paginate(25);
 

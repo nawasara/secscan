@@ -11,14 +11,15 @@ class SecurityIncident extends Model
 
     protected $fillable = [
         'incident_id', 'agent_id', 'type', 'severity', 'source_ip',
-        'score', 'correlated', 'correlated_group_id', 'evidence',
-        'metadata', 'detected_at', 'notified', 'notified_at',
+        'score', 'occurrences', 'correlated', 'correlated_group_id', 'evidence',
+        'metadata', 'detected_at', 'last_seen_at', 'notified', 'notified_at',
     ];
 
     protected $casts = [
         'evidence'      => 'array',
         'metadata'      => 'array',
         'detected_at'   => 'datetime',
+        'last_seen_at'  => 'datetime',
         'notified_at'   => 'datetime',
         'correlated'    => 'boolean',
         'notified'      => 'boolean',
@@ -32,6 +33,23 @@ class SecurityIncident extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class, 'agent_id');
+    }
+
+    /**
+     * Returns whichever of the two severities ranks higher
+     * (info < medium < high < critical). Used when aggregating
+     * a re-detected incident into an existing row.
+     */
+    public static function maxSeverity(string $a, string $b): string
+    {
+        $rank = [
+            self::SEVERITY_INFO     => 0,
+            self::SEVERITY_MEDIUM   => 1,
+            self::SEVERITY_HIGH     => 2,
+            self::SEVERITY_CRITICAL => 3,
+        ];
+
+        return ($rank[$a] ?? 0) >= ($rank[$b] ?? 0) ? $a : $b;
     }
 
     public function severityColor(): string
