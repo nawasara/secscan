@@ -67,10 +67,11 @@ class AgentController extends Controller
             'incidents.*.severity'    => 'required|in:info,medium,high,critical',
             'incidents.*.source_ip'   => 'nullable|string|max:45',
             'incidents.*.score'       => 'required|integer|min:0|max:100',
-            'incidents.*.evidence'    => 'required|array',
-            'incidents.*.detected_at' => 'required|date',
-            'incidents.*.correlated'  => 'boolean',
-            'incidents.*.metadata'    => 'nullable|array',
+            'incidents.*.evidence'        => 'required|array',
+            'incidents.*.detected_at'     => 'required|date',
+            'incidents.*.correlated'      => 'boolean',
+            'incidents.*.mitre_technique' => 'nullable|string|max:16',
+            'incidents.*.metadata'        => 'nullable|array',
         ]);
 
         $windowHours = (int) config('nawasara-secscan.agent.incident_aggregation_hours', 24);
@@ -117,18 +118,19 @@ class AgentController extends Controller
             }
 
             SecurityIncident::create([
-                'incident_id'  => $inc['incident_id'],
-                'agent_id'     => $agent->id,
-                'type'         => $inc['type'],
-                'severity'     => $inc['severity'],
-                'source_ip'    => $sourceIp,
-                'score'        => $inc['score'],
-                'occurrences'  => 1,
-                'correlated'   => $inc['correlated'] ?? false,
-                'evidence'     => $inc['evidence'],
-                'metadata'     => $inc['metadata'] ?? null,
-                'detected_at'  => $inc['detected_at'],
-                'last_seen_at' => $inc['detected_at'],
+                'incident_id'     => $inc['incident_id'],
+                'agent_id'        => $agent->id,
+                'type'            => $inc['type'],
+                'severity'        => $inc['severity'],
+                'source_ip'       => $sourceIp,
+                'score'           => $inc['score'],
+                'occurrences'     => 1,
+                'correlated'      => $inc['correlated'] ?? false,
+                'mitre_technique' => $inc['mitre_technique'] ?? null,
+                'evidence'        => $inc['evidence'],
+                'metadata'        => $inc['metadata'] ?? null,
+                'detected_at'     => $inc['detected_at'],
+                'last_seen_at'    => $inc['detected_at'],
             ]);
             $created++;
         }
@@ -267,18 +269,19 @@ class AgentController extends Controller
         }
 
         $data = $request->validate([
-            'finding_id'   => 'required|string|max:32',
-            'path'         => 'required|string|max:1024',
-            'signature_id' => 'required|string|max:64',
-            'sig_name'     => 'required|string|max:128',
-            'category'     => 'required|in:webshell,backdoor,exploit,integrity,suspicious',
-            'severity'     => 'required|in:critical,high,medium',
-            'score'        => 'required|integer|min:0|max:100',
-            'description'  => 'nullable|string|max:1024',
-            'matched_line' => 'nullable|string|max:512',
-            'file_size'    => 'nullable|integer|min:0',
-            'file_mtime'   => 'nullable|integer',  // unix timestamp
-            'detected_at'  => 'nullable|integer',  // unix timestamp
+            'finding_id'      => 'required|string|max:32',
+            'path'            => 'required|string|max:1024',
+            'signature_id'    => 'required|string|max:64',
+            'sig_name'        => 'required|string|max:128',
+            'category'        => 'required|in:webshell,backdoor,exploit,integrity,suspicious',
+            'severity'        => 'required|in:critical,high,medium',
+            'score'           => 'required|integer|min:0|max:100',
+            'description'     => 'nullable|string|max:1024',
+            'mitre_technique' => 'nullable|string|max:16',
+            'matched_line'    => 'nullable|string|max:512',
+            'file_size'       => 'nullable|integer|min:0',
+            'file_mtime'      => 'nullable|integer',  // unix timestamp
+            'detected_at'     => 'nullable|integer',  // unix timestamp
         ]);
 
         $seenAt = isset($data['detected_at'])
@@ -320,16 +323,17 @@ class AgentController extends Controller
         }
 
         AgentScanFinding::create([
-            'finding_id'   => $data['finding_id'],
-            'agent_id'     => $agent->id,
-            'path'         => $data['path'],
-            'signature_id' => $data['signature_id'],
-            'sig_name'     => $data['sig_name'],
-            'category'     => $data['category'],
-            'severity'     => $data['severity'],
-            'score'        => $data['score'],
-            'description'  => $data['description'] ?? null,
-            'matched_line' => $data['matched_line'] ?? null,
+            'finding_id'      => $data['finding_id'],
+            'agent_id'        => $agent->id,
+            'path'            => $data['path'],
+            'signature_id'    => $data['signature_id'],
+            'mitre_technique' => $data['mitre_technique'] ?? null,
+            'sig_name'        => $data['sig_name'],
+            'category'        => $data['category'],
+            'severity'        => $data['severity'],
+            'score'           => $data['score'],
+            'description'     => $data['description'] ?? null,
+            'matched_line'    => $data['matched_line'] ?? null,
             'file_size'    => $data['file_size'] ?? null,
             'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : null,
             'status'       => AgentScanFinding::STATUS_OPEN,

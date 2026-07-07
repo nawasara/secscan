@@ -4,6 +4,7 @@ namespace Nawasara\Secscan\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nawasara\Secscan\Support\MitreAttack;
 
 class SecurityIncident extends Model
 {
@@ -11,7 +12,8 @@ class SecurityIncident extends Model
 
     protected $fillable = [
         'incident_id', 'agent_id', 'type', 'severity', 'source_ip',
-        'score', 'occurrences', 'correlated', 'correlated_group_id', 'evidence',
+        'score', 'occurrences', 'correlated', 'correlated_group_id',
+        'mitre_technique', 'evidence',
         'metadata', 'detected_at', 'last_seen_at', 'notified', 'notified_at',
     ];
 
@@ -50,6 +52,16 @@ class SecurityIncident extends Model
         ];
 
         return ($rank[$a] ?? 0) >= ($rank[$b] ?? 0) ? $a : $b;
+    }
+
+    public function mitreName(): ?string
+    {
+        return MitreAttack::name($this->mitre_technique);
+    }
+
+    public function mitreUrl(): ?string
+    {
+        return MitreAttack::url($this->mitre_technique);
     }
 
     public function severityColor(): string

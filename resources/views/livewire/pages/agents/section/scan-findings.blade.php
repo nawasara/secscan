@@ -77,7 +77,16 @@
                         </td>
                         <td class="px-4 py-3">
                             <div class="text-sm font-medium text-neutral-800 dark:text-neutral-100">{{ $finding->sig_name }}</div>
-                            <div class="text-xs text-neutral-500 dark:text-neutral-400 font-mono">{{ $finding->signature_id }}</div>
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="text-xs text-neutral-500 dark:text-neutral-400 font-mono">{{ $finding->signature_id }}</span>
+                                @if ($finding->mitre_technique)
+                                    <a href="{{ $finding->mitreUrl() }}" target="_blank" rel="noopener"
+                                       title="MITRE ATT&CK: {{ $finding->mitreName() }}"
+                                       class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono font-medium bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50">
+                                        {{ $finding->mitre_technique }}
+                                    </a>
+                                @endif
+                            </div>
                         </td>
                         <td class="px-4 py-3 max-w-xs">
                             <div class="font-mono text-xs text-neutral-700 dark:text-neutral-200 break-all leading-relaxed" title="{{ $finding->path }}">

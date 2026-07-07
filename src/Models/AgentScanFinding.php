@@ -4,6 +4,7 @@ namespace Nawasara\Secscan\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Nawasara\Secscan\Support\MitreAttack;
 
 class AgentScanFinding extends Model
 {
@@ -11,7 +12,7 @@ class AgentScanFinding extends Model
 
     protected $fillable = [
         'finding_id', 'agent_id',
-        'path', 'signature_id', 'sig_name', 'category', 'severity', 'score',
+        'path', 'signature_id', 'mitre_technique', 'sig_name', 'category', 'severity', 'score',
         'description', 'matched_line',
         'file_size', 'file_mtime',
         'status', 'triaged_by', 'triaged_at', 'triage_note',
@@ -38,6 +39,16 @@ class AgentScanFinding extends Model
     public function triagedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'triaged_by');
+    }
+
+    public function mitreName(): ?string
+    {
+        return MitreAttack::name($this->mitre_technique);
+    }
+
+    public function mitreUrl(): ?string
+    {
+        return MitreAttack::url($this->mitre_technique);
     }
 
     public function statusColor(): string

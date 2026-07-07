@@ -63,6 +63,13 @@
                                     @if ($inc->correlated)
                                         <x-nawasara-ui::badge color="danger">Chain</x-nawasara-ui::badge>
                                     @endif
+                                    @if ($inc->mitre_technique)
+                                        <a href="{{ $inc->mitreUrl() }}" target="_blank" rel="noopener"
+                                           title="MITRE ATT&CK: {{ $inc->mitreName() }}"
+                                           class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono font-medium bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50">
+                                            {{ $inc->mitre_technique }}
+                                        </a>
+                                    @endif
                                 </span>
                             </td>
                             <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
@@ -161,6 +168,17 @@
                         <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Agent</p>
                         <p class="text-neutral-700 dark:text-neutral-200">{{ $selectedIncident->agent?->name ?? '—' }}</p>
                     </div>
+                    @if ($selectedIncident->mitre_technique)
+                        <div class="col-span-2">
+                            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Teknik MITRE ATT&CK</p>
+                            <a href="{{ $selectedIncident->mitreUrl() }}" target="_blank" rel="noopener"
+                               class="inline-flex items-center gap-1.5 text-sm text-sky-600 dark:text-sky-400 hover:underline">
+                                <span class="font-mono font-medium">{{ $selectedIncident->mitre_technique }}</span>
+                                <span class="text-neutral-500 dark:text-neutral-400">— {{ $selectedIncident->mitreName() }}</span>
+                                <x-lucide-external-link class="size-3.5" />
+                            </a>
+                        </div>
+                    @endif
                 </div>
 
                 @if ($selectedIncident->evidence)
