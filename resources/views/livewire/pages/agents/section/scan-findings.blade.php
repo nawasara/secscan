@@ -42,7 +42,7 @@
             <x-nawasara-ui::filter-group
                 label="Kategori"
                 model="filterCategory"
-                :items="['webshell' => 'Webshell', 'backdoor' => 'Backdoor', 'exploit' => 'Exploit Artifact', 'integrity' => 'File Integrity']"
+                :items="['webshell' => 'Webshell', 'backdoor' => 'Backdoor', 'exploit' => 'Exploit Artifact', 'integrity' => 'File Integrity', 'seo_spam' => 'SEO Spam']"
                 icon="lucide-bug" />
         </x-nawasara-ui::filter-panel>
 

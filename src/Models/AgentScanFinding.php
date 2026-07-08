@@ -79,6 +79,7 @@ class AgentScanFinding extends Model
             'backdoor'  => 'Backdoor',
             'exploit'   => 'Exploit Artifact',
             'integrity' => 'File Integrity',
+            'seo_spam'  => 'SEO Spam',
             default     => ucfirst($this->category),
         };
     }

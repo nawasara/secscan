@@ -273,7 +273,7 @@ class AgentController extends Controller
             'path'            => 'required|string|max:1024',
             'signature_id'    => 'required|string|max:64',
             'sig_name'        => 'required|string|max:128',
-            'category'        => 'required|in:webshell,backdoor,exploit,integrity,suspicious',
+            'category'        => 'required|in:webshell,backdoor,exploit,integrity,suspicious,seo_spam',
             'severity'        => 'required|in:critical,high,medium',
             'score'           => 'required|integer|min:0|max:100',
             'description'     => 'nullable|string|max:1024',
