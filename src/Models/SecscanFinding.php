@@ -18,6 +18,7 @@ class SecscanFinding extends Model
     public const SCAN_SOURCE_HTTP = 'http';
 
     public const THREAT_JUDOL = 'judol';
+    public const THREAT_ILLEGAL_PHARMA = 'illegal_pharma';
     public const THREAT_DEFACED = 'defaced';
     public const THREAT_PHISHING = 'phishing';
     public const THREAT_SPAM = 'spam';
@@ -64,6 +65,7 @@ class SecscanFinding extends Model
     {
         return [
             self::THREAT_JUDOL => 'Judi Online',
+            self::THREAT_ILLEGAL_PHARMA => 'Obat Ilegal',
             self::THREAT_DEFACED => 'Defacement',
             self::THREAT_PHISHING => 'Phishing',
             self::THREAT_SPAM => 'SEO Spam',

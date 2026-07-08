@@ -136,6 +136,7 @@ class ScanWordpressJob extends AbstractSyncJob
     {
         return match ($threatType) {
             SecscanFinding::THREAT_JUDOL,
+            SecscanFinding::THREAT_ILLEGAL_PHARMA,
             SecscanFinding::THREAT_DEFACED,
             SecscanFinding::THREAT_MALWARE,
             SecscanFinding::THREAT_PHISHING => 'secscan.site.compromised',

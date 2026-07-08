@@ -145,6 +145,26 @@ class SqlSignalDetector
         $signals['judol_foreign'] = $foreign;
         $signals['judol_strong_count'] = $strongHits['count'];
 
+        // --- Illegal pharma detection, two-tier ---
+        // Strong terms ("penggugur kandungan", "jual obat aborsi", "cytotec 400")
+        // flag on their own. Weak clinical terms (misoprostol/aborsi) also appear
+        // in legit health articles, so in the DB-title path they only count when
+        // corroborated by a strong hit on the same site — conservative by design.
+        $pharmaStrong = (array) config('nawasara-secscan.pharma_keywords_strong', []);
+        $pharmaWeak = (array) config('nawasara-secscan.pharma_keywords_weak', []);
+        $pStrongHits = $inspector->matchedTitlePosts($db, $prefix, $pharmaStrong, $homeUrl, 5);
+        $pWeakHits = $inspector->matchedTitlePosts($db, $prefix, $pharmaWeak, $homeUrl, 5);
+
+        $pCorroborated = $pStrongHits['count'] > 0;
+        $pCount = $pStrongHits['count'] + ($pCorroborated ? $pWeakHits['count'] : 0);
+        $pSamples = $pStrongHits['samples'];
+        if ($pCorroborated && count($pSamples) < 5) {
+            $pSamples = array_slice(array_merge($pSamples, $pWeakHits['samples']), 0, 5);
+        }
+
+        $signals['pharma_posts'] = ['count' => $pCount, 'samples' => $pSamples];
+        $signals['pharma_strong_count'] = $pStrongHits['count'];
+
         $signals['injected_content'] = $inspector->injectedContentCount($db, $prefix);
         $signals['suspicious_options'] = $inspector->suspiciousOptionCount($db, $prefix);
         $signals['admin_stats'] = $inspector->adminStats($db, $prefix, $expectedSuffix);

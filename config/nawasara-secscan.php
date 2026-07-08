@@ -46,6 +46,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Illegal pharma / abortion-drug SEO spam
+    |--------------------------------------------------------------------------
+    | Same two-tier logic as judol. Government (esp. puskesmas) sites are mass
+    | injected with pages selling Cytotec/misoprostol abortion pills.
+    |
+    | strong — commercial abortion-drug vocabulary a legit health article never
+    |          uses ("penggugur kandungan", "jual obat aborsi", "cytotec 400").
+    |          A single whole-word match flags the site.
+    | weak   — clinical terms that CAN appear in legitimate obstetric content
+    |          (misoprostol is legally used for postpartum haemorrhage). Counted
+    |          ONLY when corroborated by a strong hit OR a sales term below, so
+    |          real medical articles don't false-positive.
+    */
+    'pharma_keywords_strong' => [
+        'penggugur kandungan', 'obat penggugur', 'jual obat aborsi', 'obat aborsi',
+        'menggugurkan kandungan', 'cytotec 400', 'cytotec 200', 'apotek cytotec',
+        'gastrul', 'obat cytotec', 'pil aborsi', 'jual cytotec', 'cara menggugurkan',
+    ],
+    'pharma_keywords_weak' => [
+        'cytotec', 'misoprostol', 'mifepristone', 'aborsi', 'telat datang bulan',
+        'telat bulan',
+    ],
+    // Sales-intent terms that corroborate a weak pharma keyword (turn a clinical
+    // mention into a "for sale" signal). Presence of any alongside a weak keyword
+    // lets weak hits count even without a strong keyword.
+    'pharma_sales_terms' => [
+        'jual', 'harga', 'ready', 'cod', 'wa ', 'whatsapp', 'pesan', 'order',
+        'terpercaya', 'tanpa resep', 'dijamin', 'kirim',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Foreign-language booster
     |--------------------------------------------------------------------------
     | A judol keyword in a title that ALSO contains non-Indonesian/English

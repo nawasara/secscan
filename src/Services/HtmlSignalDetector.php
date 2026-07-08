@@ -31,6 +31,9 @@ class HtmlSignalDetector
         $judol = $this->detectJudol($html, $url);
         if ($judol) $findings[] = $judol;
 
+        $pharma = $this->detectPharma($html, $url);
+        if ($pharma) $findings[] = $pharma;
+
         $defacement = $this->detectDefacement($html, $url, $hostname);
         if ($defacement) $findings[] = $defacement;
 
@@ -108,6 +111,90 @@ class HtmlSignalDetector
 
         return [
             'threat_type' => 'judol',
+            'score'       => min(100, $score),
+            'evidence'    => array_merge(['url' => $url, 'source' => 'http'], $evidence),
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // 1b. Illegal pharma — abortion-drug SEO spam
+    // -------------------------------------------------------------------------
+
+    /**
+     * Same shape as detectJudol, but weak clinical terms (misoprostol, aborsi)
+     * only score when corroborated by a strong keyword OR a sales-intent term
+     * on the same page — so a legitimate obstetric article that mentions
+     * "misoprostol" for postpartum haemorrhage is not flagged.
+     */
+    private function detectPharma(string $html, string $url): ?array
+    {
+        $score    = 0;
+        $evidence = [];
+
+        $strong = config('nawasara-secscan.pharma_keywords_strong', []);
+        $weak   = config('nawasara-secscan.pharma_keywords_weak', []);
+        $sales  = config('nawasara-secscan.pharma_sales_terms', []);
+
+        $title    = $this->extractTitle($html);
+        $meta     = $this->extractMeta($html, 'description');
+        $bodyText = strip_tags($html);
+
+        // Sales-intent present anywhere on the page corroborates weak keywords.
+        $pageLower  = mb_strtolower($title . ' ' . $meta . ' ' . $bodyText);
+        $hasSales   = (bool) $this->matchKeywords($pageLower, $sales);
+
+        // --- Title ---
+        if ($title !== '') {
+            $titleLower = mb_strtolower($title);
+            $strongHits = $this->matchKeywords($titleLower, $strong);
+            $weakHits   = $this->matchKeywords($titleLower, $weak);
+
+            if ($strongHits) {
+                $score += min(90, 60 + count($strongHits) * 10);
+                $evidence['title_strong_keywords'] = $strongHits;
+                $evidence['title'] = mb_substr($title, 0, 120);
+            } elseif ($weakHits && $hasSales) {
+                // weak clinical term + sales intent = for-sale spam, not an article
+                $score += min(60, 35 + count($weakHits) * 8);
+                $evidence['title_weak_keywords'] = $weakHits;
+                $evidence['title'] = mb_substr($title, 0, 120);
+                $evidence['corroborated_by_sales'] = true;
+            }
+        }
+
+        // --- Meta description (strong only) ---
+        if ($meta !== '') {
+            $hits = $this->matchKeywords(mb_strtolower($meta), $strong);
+            if ($hits) {
+                $score += min(30, count($hits) * 10);
+                $evidence['meta_description_keywords'] = $hits;
+                $evidence['meta_description'] = mb_substr($meta, 0, 120);
+            }
+        }
+
+        // --- Body density: strong always; weak only when corroborated by sales ---
+        $bodyLower  = mb_strtolower($bodyText);
+        $bodyStrong = $this->matchKeywordsWithCount($bodyLower, $strong);
+        if ($bodyStrong) {
+            $totalHits = array_sum($bodyStrong);
+            if ($totalHits >= 2) {
+                $score += min(40, 10 + $totalHits * 3);
+                $evidence['body_strong_keyword_density'] = $bodyStrong;
+            }
+        } elseif ($hasSales) {
+            $bodyWeak = $this->matchKeywordsWithCount($bodyLower, $weak);
+            $totalWeak = array_sum($bodyWeak);
+            if ($totalWeak >= 3) {
+                $score += min(30, 10 + $totalWeak * 3);
+                $evidence['body_weak_keyword_density'] = $bodyWeak;
+                $evidence['corroborated_by_sales'] = true;
+            }
+        }
+
+        if ($score <= 0) return null;
+
+        return [
+            'threat_type' => 'illegal_pharma',
             'score'       => min(100, $score),
             'evidence'    => array_merge(['url' => $url, 'source' => 'http'], $evidence),
         ];

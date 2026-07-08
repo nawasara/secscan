@@ -71,6 +71,31 @@ class FindingScorer
             $findings[] = $this->finalize(SecscanFinding::THREAT_JUDOL, $judolScore, $judolEvidence);
         }
 
+        // ---- ILLEGAL PHARMA (abortion-drug SEO spam) -----------------------
+        // Mirror of the judol block. Strong terms ("penggugur kandungan", "jual
+        // obat aborsi") never appear in legit puskesmas content → high confidence
+        // on a single hit. Weak clinical terms reaching here were already
+        // corroborated by a strong hit on the same site (SqlSignalDetector).
+        $pharmaScore = 0;
+        $pharmaEvidence = [];
+
+        $pp = $signals['pharma_posts'] ?? ['count' => 0, 'samples' => []];
+        $pStrongCount = (int) ($signals['pharma_strong_count'] ?? 0);
+        if ($pp['count'] > 0) {
+            if ($pStrongCount > 0) {
+                $pharmaScore += min(90, 65 + $pStrongCount * 4);
+                $pharmaEvidence['strong_keyword_posts'] = $pStrongCount;
+            } else {
+                $pharmaScore += min(70, 45 + $pp['count'] * 5);
+            }
+            $pharmaEvidence['published_pharma_posts'] = $pp['count'];
+            $pharmaEvidence['samples'] = $pp['samples'];
+        }
+
+        if ($pharmaScore > 0) {
+            $findings[] = $this->finalize(SecscanFinding::THREAT_ILLEGAL_PHARMA, $pharmaScore, $pharmaEvidence);
+        }
+
         // ---- MALWARE (injected content / persistence options) --------------
         $malwareScore = 0;
         $malwareEvidence = [];

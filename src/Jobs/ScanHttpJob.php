@@ -272,7 +272,7 @@ class ScanHttpJob extends AbstractSyncJob
     private function ruleFor(string $threatType): string
     {
         return match ($threatType) {
-            'judol', 'defaced', 'malware', 'phishing' => 'secscan.site.compromised',
+            'judol', 'illegal_pharma', 'defaced', 'malware', 'phishing' => 'secscan.site.compromised',
             default => 'secscan.site.suspicious',
         };
     }
