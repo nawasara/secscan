@@ -79,12 +79,20 @@ class ScanHttpJob extends AbstractSyncJob
 
                 foreach ($signals as $signal) {
                     $findings++;
-                    ['created' => $c, 'updated' => $u, 'alerted' => $a] = $this->upsertFinding(
-                        $hostname, $path, $url, $signal, $alertMin
-                    );
-                    $created += $c;
-                    $updated += $u;
-                    $alerted += $a;
+                    try {
+                        ['created' => $c, 'updated' => $u, 'alerted' => $a] = $this->upsertFinding(
+                            $hostname, $path, $url, $signal, $alertMin
+                        );
+                        $created += $c;
+                        $updated += $u;
+                        $alerted += $a;
+                    } catch (\Throwable $e) {
+                        // One malformed row must not abort the whole fleet scan.
+                        \Illuminate\Support\Facades\Log::warning('secscan: upsertFinding failed', [
+                            'hostname' => $hostname, 'path' => $path,
+                            'threat' => $signal['threat_type'] ?? '?', 'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
         }
@@ -184,6 +192,11 @@ class ScanHttpJob extends AbstractSyncJob
     ): array {
         $now = now();
         $created = $updated = $alerted = 0;
+
+        // Off-domain redirect targets (e.g. Cloudflare Access login URLs with a
+        // JWT) can be very long; scan_url is TEXT but cap defensively so an
+        // extreme URL never bloats the row or the evidence JSON.
+        $url = mb_substr($url, 0, 2000);
 
         $existing = SecscanFinding::where('db_name', $hostname)
             ->where('scan_path', $path)
