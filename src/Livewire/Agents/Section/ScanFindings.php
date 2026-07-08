@@ -6,10 +6,12 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\AgentScanFinding;
+use Nawasara\Ui\Livewire\Concerns\HasExport;
 use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class ScanFindings extends Component
 {
+    use HasExport;
     use HasTimeWindow;
     use WithPagination;
 
@@ -102,6 +104,37 @@ class ScanFindings extends Component
     public function updatedFilterStatus(): void   { $this->resetPage(); }
     public function updatedFilterSeverity(): void { $this->resetPage(); }
     public function updatedFilterCategory(): void { $this->resetPage(); }
+
+    protected function exportFilename(): string
+    {
+        return 'secscan-scan-findings-agent-'.$this->agentDbId;
+    }
+
+    protected function exportData(): iterable
+    {
+        $this->authorize('secscan.export');
+
+        return AgentScanFinding::where('agent_id', $this->agentDbId)
+            ->orderByRaw("FIELD(severity, 'critical','high','medium')")
+            ->orderByDesc('detected_at')
+            ->get()
+            ->map(fn (AgentScanFinding $f) => [
+                'Finding ID'  => $f->finding_id,
+                'Path'        => $f->path,
+                'Signature'   => $f->sig_name,
+                'Signature ID' => $f->signature_id,
+                'Kategori'    => $f->categoryLabel(),
+                'Severity'    => $f->severity,
+                'Score'       => $f->score,
+                'MITRE'       => $f->mitre_technique,
+                'MITRE Nama'  => $f->mitreName(),
+                'Status'      => $f->status,
+                'Baris Cocok' => $f->matched_line,
+                'Deskripsi'   => $f->description,
+                'Terdeteksi'  => $f->detected_at?->format('Y-m-d H:i:s'),
+                'Terakhir'    => $f->last_seen_at?->format('Y-m-d H:i:s'),
+            ]);
+    }
 
     public function render()
     {

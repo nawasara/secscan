@@ -9,12 +9,17 @@ use Livewire\WithPagination;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Models\SecscanFindingHistory;
+use Nawasara\Ui\Livewire\Concerns\HasExport;
 use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Index extends Component
 {
+    use HasExport;
     use HasTimeWindow;
     use WithPagination;
+
+    /** Cap export to protect memory on large finding tables. */
+    protected int $exportLimit = 10000;
 
     #[Url]
     public string $search = '';
@@ -170,6 +175,34 @@ class Index extends Component
             ->orderByDesc('score')
             ->orderByDesc('last_detected_at')
             ->paginate($this->perPage);
+    }
+
+    protected function exportFilename(): string
+    {
+        return 'secscan-findings';
+    }
+
+    protected function exportData(): iterable
+    {
+        $this->authorize('secscan.export');
+
+        return SecscanFinding::query()
+            ->orderByRaw("FIELD(severity, 'critical','warning','info')")
+            ->orderByDesc('last_detected_at')
+            ->limit($this->exportLimit)
+            ->get()
+            ->map(fn (SecscanFinding $f) => [
+                'Situs / DB'    => $f->site_name ?: $f->db_name,
+                'URL'           => $f->site_url ?: $f->scan_url,
+                'Sumber'        => $f->sourceLabel(),
+                'Jenis Ancaman' => $f->threatLabel(),
+                'Severity'      => $f->severity,
+                'Status'        => $f->statusLabel(),
+                'Score'         => $f->score,
+                'Bukti'         => is_array($f->evidence) ? json_encode($f->evidence, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string) $f->evidence,
+                'Pertama'       => $f->first_detected_at?->format('Y-m-d H:i:s'),
+                'Terakhir'      => $f->last_detected_at?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     public function render()

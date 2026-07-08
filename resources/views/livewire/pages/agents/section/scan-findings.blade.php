@@ -49,6 +49,10 @@
         <x-nawasara-ui::time-window
             :window="$window" :from="$from" :to="$to"
             :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+
+        <x-nawasara-ui::export-button
+            permission="secscan.export"
+            tooltip="Ekspor scan findings" />
     </div>
 
     <div wire:ignore data-filter-chips class="mb-3"></div>

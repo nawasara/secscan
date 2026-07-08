@@ -6,9 +6,11 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\Agent;
+use Nawasara\Ui\Livewire\Concerns\HasExport;
 
 class Table extends Component
 {
+    use HasExport;
     use WithPagination;
 
     public string $search = '';
@@ -28,6 +30,37 @@ class Table extends Component
     public function updatedFilterStatus(): void
     {
         $this->resetPage();
+    }
+
+    protected function exportFilename(): string
+    {
+        return 'secscan-agents';
+    }
+
+    protected function exportData(): iterable
+    {
+        $this->authorize('secscan.export');
+
+        // api_key_hash deliberately excluded — never export credentials.
+        return Agent::withCount('incidents')
+            ->orderByDesc('last_seen_at')
+            ->get()
+            ->map(fn (Agent $a) => [
+                'Agent ID'    => $a->agent_id,
+                'Nama'        => $a->name,
+                'Hostname'    => $a->hostname,
+                'OS'          => $a->os,
+                'Arch'        => $a->arch,
+                'Versi'       => $a->agent_version,
+                'Web Server'  => $a->web_server,
+                'IP Lokal'    => $a->ip_local,
+                'Status'      => $a->statusLabel(),
+                'Health'      => $a->health_score,
+                'Plugins'     => is_array($a->plugins_active) ? implode(', ', $a->plugins_active) : (string) $a->plugins_active,
+                'Insiden'     => $a->incidents_count,
+                'Terakhir'    => $a->last_seen_at?->format('Y-m-d H:i:s'),
+                'Terdaftar'   => $a->registered_at?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     public function render()

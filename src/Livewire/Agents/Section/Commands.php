@@ -9,9 +9,11 @@ use Nawasara\AuthPrimitives\Attributes\RequiresSudo;
 use Nawasara\AuthPrimitives\Traits\WithSudo;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\AgentCommand;
+use Nawasara\Ui\Livewire\Concerns\HasExport;
 
 class Commands extends Component
 {
+    use HasExport;
     use WithSudo;
 
     public string $agentId = '';
@@ -140,6 +142,33 @@ class Commands extends Component
     {
         unset($this->commands);
         unset($this->pendingCount);
+    }
+
+    protected function exportFilename(): string
+    {
+        return 'secscan-commands-'.$this->agentId;
+    }
+
+    protected function exportData(): iterable
+    {
+        $this->authorize('secscan.export');
+
+        return AgentCommand::where('agent_id', $this->agent->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (AgentCommand $c) => [
+                'Command ID'  => $c->command_id,
+                'Aksi'        => $c->actionLabel(),
+                'Params'      => is_array($c->params) ? json_encode($c->params, JSON_UNESCAPED_SLASHES) : (string) $c->params,
+                'Status'      => $c->statusLabel(),
+                'Output'      => $c->output,
+                'Error'       => $c->error,
+                'Disetujui'   => $c->approved_at?->format('Y-m-d H:i:s'),
+                'Ditolak'     => $c->rejected_at?->format('Y-m-d H:i:s'),
+                'Alasan Tolak' => $c->rejection_reason,
+                'Dieksekusi'  => $c->exec_at?->format('Y-m-d H:i:s'),
+                'Dibuat'      => $c->created_at?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     public function render()

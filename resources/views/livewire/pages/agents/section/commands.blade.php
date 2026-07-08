@@ -7,14 +7,19 @@
                 <x-nawasara-ui::badge color="warning">{{ $this->pendingCount }} menunggu</x-nawasara-ui::badge>
             @endif
         </div>
-        <x-nawasara-ui::button
-            color="primary"
-            size="sm"
-            icon="lucide-terminal"
-            x-on:click="$dispatch('open-modal', { id: 'modal-issue-command', loading: false })"
-            wire:click="$refresh">
-            Kirim Perintah
-        </x-nawasara-ui::button>
+        <div class="flex items-center gap-2">
+            <x-nawasara-ui::export-button
+                permission="secscan.export"
+                tooltip="Ekspor riwayat perintah" />
+            <x-nawasara-ui::button
+                color="primary"
+                size="sm"
+                icon="lucide-terminal"
+                x-on:click="$dispatch('open-modal', { id: 'modal-issue-command', loading: false })"
+                wire:click="$refresh">
+                Kirim Perintah
+            </x-nawasara-ui::button>
+        </div>
     </div>
 
     {{-- Command history table --}}

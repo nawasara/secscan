@@ -6,12 +6,17 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Ui\Livewire\Concerns\HasExport;
 use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Table extends Component
 {
+    use HasExport;
     use HasTimeWindow;
     use WithPagination;
+
+    /** Cap export to protect memory on large incident tables. */
+    protected int $exportLimit = 10000;
 
     #[Url]
     public string $search = '';
@@ -41,6 +46,37 @@ class Table extends Component
     {
         $this->selectedIncident = SecurityIncident::with('agent')->find($id);
         $this->dispatch('modal-open:incident-detail-modal');
+    }
+
+    protected function exportFilename(): string
+    {
+        return 'secscan-incidents';
+    }
+
+    protected function exportData(): iterable
+    {
+        $this->authorize('secscan.export');
+
+        return SecurityIncident::with('agent')
+            ->orderByDesc('last_seen_at')
+            ->limit($this->exportLimit)
+            ->get()
+            ->map(fn (SecurityIncident $inc) => [
+                'Incident ID'   => $inc->incident_id,
+                'Agent'         => $inc->agent?->name,
+                'Hostname'      => $inc->agent?->hostname,
+                'Tipe'          => $inc->typeLabel(),
+                'Severity'      => $inc->severity,
+                'Source IP'     => $inc->source_ip,
+                'Score'         => $inc->score,
+                'Kejadian'      => $inc->occurrences,
+                'MITRE'         => $inc->mitre_technique,
+                'MITRE Nama'    => $inc->mitreName(),
+                'Correlated'    => $inc->correlated ? 'Ya' : 'Tidak',
+                'Evidence'      => collect($inc->evidence ?? [])->pluck('raw')->implode(' | '),
+                'Terdeteksi'    => $inc->detected_at?->format('Y-m-d H:i:s'),
+                'Terakhir'      => $inc->last_seen_at?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     public function render()

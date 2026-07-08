@@ -18,6 +18,10 @@
             </div>
 
             <x-nawasara-ui::search-input model="search" placeholder="Cari nama, hostname, IP…" />
+
+            <x-nawasara-ui::export-button
+                permission="secscan.export"
+                tooltip="Ekspor daftar agent" />
         </div>
 
         <div wire:ignore data-filter-chips></div>

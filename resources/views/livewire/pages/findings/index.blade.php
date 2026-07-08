@@ -12,6 +12,9 @@
             <x-nawasara-ui::time-window
                 :window="$window" :from="$from" :to="$to"
                 :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+            <x-nawasara-ui::export-button
+                permission="secscan.export"
+                tooltip="Ekspor temuan (maks 10.000 baris)" />
         </x-nawasara-ui::page-header>
 
         @php

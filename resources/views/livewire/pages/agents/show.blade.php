@@ -41,19 +41,6 @@
                 color="info" />
         </div>
 
-        {{-- Commands panel (Phase 2) --}}
-        <x-nawasara-ui::page.card class="mb-6">
-            <livewire:nawasara-secscan.agents.section.commands :agentId="$this->agent->agent_id" :key="'commands-'.$this->agent->id" />
-        </x-nawasara-ui::page.card>
-
-        {{-- File Scan Findings panel (Phase 3) --}}
-        <x-nawasara-ui::page.card class="mb-6">
-            <div class="mb-4">
-                <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">File Scanner Findings</p>
-            </div>
-            <livewire:nawasara-secscan.agents.section.scan-findings :agentDbId="$this->agent->id" :key="'scan-'.$this->agent->id" />
-        </x-nawasara-ui::page.card>
-
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
             {{-- Left: Agent info + heartbeat --}}
@@ -120,7 +107,12 @@
 
                 {{-- Recent heartbeats --}}
                 <x-nawasara-ui::page.card>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-3">Heartbeat Terakhir</p>
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Heartbeat Terakhir</p>
+                        <x-nawasara-ui::export-button
+                            permission="secscan.export"
+                            tooltip="Ekspor heartbeat" />
+                    </div>
                     @forelse ($this->recentHeartbeats as $hb)
                         <div class="flex items-center justify-between gap-2 py-2 border-b border-neutral-100 dark:border-neutral-700/60 last:border-0 text-xs">
                             <div class="text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
@@ -150,78 +142,31 @@
 
             </div>
 
-            {{-- Right: Recent incidents --}}
+            {{-- Right: tabbed detail (findings / incidents / commands) --}}
             <div class="lg:col-span-2">
                 <x-nawasara-ui::page.card>
-                    <div class="flex items-center justify-between mb-4">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Insiden Keamanan</p>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <x-nawasara-ui::filter-panel
-                                label="Filter"
-                                :state="['filterSeverity' => $filterSeverity]"
-                                :dimensions="['filterSeverity' => 'Severity']">
-                                <x-nawasara-ui::filter-group
-                                    label="Severity"
-                                    model="filterSeverity"
-                                    :items="['critical' => 'Critical', 'high' => 'High', 'medium' => 'Medium', 'info' => 'Info']"
-                                    icon="lucide-octagon-alert" />
-                            </x-nawasara-ui::filter-panel>
+                    <x-nawasara-ui::tab-switcher
+                        :items="[
+                            ['key' => 'findings', 'label' => 'Scan Findings', 'icon' => 'lucide-scan-search', 'badge' => $this->tabCounts['findings'] ?: null],
+                            ['key' => 'incidents', 'label' => 'Insiden', 'icon' => 'lucide-shield-alert', 'badge' => $this->tabCounts['incidents'] ?: null],
+                            ['key' => 'commands', 'label' => 'Commands', 'icon' => 'lucide-terminal', 'badge' => $this->tabCounts['commands'] ?: null],
+                        ]"
+                        :active="$tab"
+                        wire-method="setTab" />
 
-                            <x-nawasara-ui::time-window
-                                :window="$window" :from="$from" :to="$to"
-                                :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
-                        </div>
+                    <div class="pt-4">
+                        {{-- Panels: only the active one is mounted so its filters/pagination don't run in the background --}}
+                        @if ($tab === 'findings')
+                            <livewire:nawasara-secscan.agents.section.scan-findings
+                                :agentDbId="$this->agent->id" :key="'scan-'.$this->agent->id" />
+                        @elseif ($tab === 'incidents')
+                            <livewire:nawasara-secscan.agents.section.incidents
+                                :agentDbId="$this->agent->id" :key="'incidents-'.$this->agent->id" />
+                        @elseif ($tab === 'commands')
+                            <livewire:nawasara-secscan.agents.section.commands
+                                :agentId="$this->agent->agent_id" :key="'commands-'.$this->agent->id" />
+                        @endif
                     </div>
-
-                    <div wire:ignore data-filter-chips class="mb-3"></div>
-
-                    @if ($this->incidents->isEmpty())
-                        <x-nawasara-ui::empty-state inline variant="celebrate"
-                            icon="lucide-shield-check"
-                            title="Tidak ada insiden"
-                            description="Belum ada insiden yang tercatat untuk agent ini." />
-                    @else
-                        <x-nawasara-ui::table
-                            :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Terdeteksi']">
-                            <x-slot:table>
-                                @foreach ($this->incidents as $inc)
-                                    <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                                        <td class="px-4 py-3">
-                                            <x-nawasara-ui::badge :color="$inc->severityColor()">
-                                                {{ ucfirst($inc->severity) }}
-                                            </x-nawasara-ui::badge>
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">
-                                            {{ $inc->typeLabel() }}
-                                        </td>
-                                        <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
-                                            @if($inc->source_ip)
-                                                <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
-                                                   wire:navigate
-                                                   class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
-                                                    {{ $inc->source_ip }}
-                                                </a>
-                                            @else
-                                                <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
-                                            @endif
-                                        </td>
-                                        <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
-                                            {{ $inc->score }}
-                                        </td>
-                                        <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                                            <span title="{{ $inc->detected_at?->format('d M Y H:i:s') }}">
-                                                {{ $inc->detected_at?->diffForHumans() }}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </x-slot:table>
-                        </x-nawasara-ui::table>
-
-                        <div class="mt-4">
-                            {{ $this->incidents->links() }}
-                        </div>
-                    @endif
                 </x-nawasara-ui::page.card>
             </div>
 

@@ -25,6 +25,10 @@
                 <x-nawasara-ui::time-window
                     :window="$window" :from="$from" :to="$to"
                     :presets="['today' => 'Hari ini', '7d' => '7 hari', '30d' => '30 hari', 'all' => 'Semua']" />
+
+                <x-nawasara-ui::export-button
+                    permission="secscan.export"
+                    tooltip="Ekspor insiden (maks 10.000 baris)" />
             </div>
 
             <x-nawasara-ui::search-input model="search" placeholder="Cari IP sumber…" />
