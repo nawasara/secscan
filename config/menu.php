@@ -39,6 +39,13 @@ return [
                 'permission' => 'secscan.view',
                 'navigate' => true,
             ],
+            [
+                'label' => 'IP Blocks',
+                'icon' => 'lucide-shield-ban',
+                'url' => url($prefix.'/ip-blocks'),
+                'permission' => 'secscan.ip-block.manage',
+                'navigate' => true,
+            ],
         ],
     ],
 ];

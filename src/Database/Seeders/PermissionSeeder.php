@@ -19,6 +19,7 @@ class PermissionSeeder extends Seeder
             'secscan.agent.command',   // issue + approve/reject remote commands (Phase 2)
             'secscan.agent.scan',      // triage file scanner findings (Phase 3)
             'secscan.export',          // export any secscan table (csv/xlsx/json)
+            'secscan.ip-block.manage', // view IP blocks + manual unblock (Decision Engine)
         ];
 
         foreach ($permissions as $permission) {

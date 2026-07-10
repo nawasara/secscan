@@ -15,6 +15,7 @@ class SecurityIncident extends Model
         'score', 'occurrences', 'correlated', 'correlated_group_id',
         'mitre_technique', 'evidence',
         'metadata', 'detected_at', 'last_seen_at', 'notified', 'notified_at',
+        'blocked_at', 'block_id',
     ];
 
     protected $casts = [
@@ -23,6 +24,7 @@ class SecurityIncident extends Model
         'detected_at'   => 'datetime',
         'last_seen_at'  => 'datetime',
         'notified_at'   => 'datetime',
+        'blocked_at'    => 'datetime',
         'correlated'    => 'boolean',
         'notified'      => 'boolean',
     ];
@@ -35,6 +37,16 @@ class SecurityIncident extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class, 'agent_id');
+    }
+
+    public function block(): BelongsTo
+    {
+        return $this->belongsTo(IpBlock::class, 'block_id');
+    }
+
+    public function isBlocked(): bool
+    {
+        return $this->blocked_at !== null;
     }
 
     /**

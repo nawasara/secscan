@@ -78,11 +78,16 @@
                             </td>
                             <td class="px-4 py-3 font-mono text-sm text-neutral-700 dark:text-neutral-200">
                                 @if($inc->source_ip)
-                                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
-                                       wire:navigate
-                                       class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
-                                        {{ $inc->source_ip }}
-                                    </a>
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
+                                           wire:navigate
+                                           class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
+                                            {{ $inc->source_ip }}
+                                        </a>
+                                        @if($inc->blocked_at)
+                                            <x-nawasara-ui::badge color="danger" title="IP di-block {{ $inc->blocked_at->diffForHumans() }}">Blocked</x-nawasara-ui::badge>
+                                        @endif
+                                    </span>
                                 @else
                                     <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
                                 @endif

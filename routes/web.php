@@ -7,6 +7,7 @@ use Nawasara\Secscan\Livewire\Agents\Show as AgentShow;
 use Nawasara\Secscan\Livewire\Dashboard\Index as DashboardIndex;
 use Nawasara\Secscan\Livewire\Findings\Index as FindingsIndex;
 use Nawasara\Secscan\Livewire\Incidents\Index as IncidentsIndex;
+use Nawasara\Secscan\Livewire\IpBlocks\Index as IpBlocksIndex;
 use Nawasara\Secscan\Livewire\IpTimeline\Show as IpTimelineShow;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 
@@ -30,6 +31,10 @@ Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function (
     Route::get('agents/{agentId}', AgentShow::class)
         ->middleware(PermissionMiddleware::using('secscan.agent.view'))
         ->name('nawasara-secscan.agents.show');
+
+    Route::get('ip-blocks', IpBlocksIndex::class)
+        ->middleware(PermissionMiddleware::using('secscan.ip-block.manage'))
+        ->name('nawasara-secscan.ip-blocks');
 
     Route::get('ip/{ip}', IpTimelineShow::class)
         ->middleware(PermissionMiddleware::using('secscan.view'))

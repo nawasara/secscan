@@ -79,6 +79,7 @@ class AgentController extends Controller
 
         $created    = 0;
         $aggregated = 0;
+        $touchedIds = []; // incidents to run through the Decision Engine
 
         foreach ($data['incidents'] as $inc) {
             $detectedAt = \Carbon\Carbon::parse($inc['detected_at']);
@@ -114,10 +115,11 @@ class AgentController extends Controller
                     ),
                 ]);
                 $aggregated++;
+                $touchedIds[] = $existing->id; // occurrences bumped — may now cross the block threshold
                 continue;
             }
 
-            SecurityIncident::create([
+            $new = SecurityIncident::create([
                 'incident_id'     => $inc['incident_id'],
                 'agent_id'        => $agent->id,
                 'type'            => $inc['type'],
@@ -133,10 +135,19 @@ class AgentController extends Controller
                 'last_seen_at'    => $inc['detected_at'],
             ]);
             $created++;
+            $touchedIds[] = $new->id;
         }
 
         // Update agent status
         $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
+
+        // Run the Decision Engine off the request path (auto-block evaluation).
+        // Only dispatched when autoblock is enabled, to avoid queue noise.
+        if (config('nawasara-secscan.autoblock.enabled', false)) {
+            foreach (array_unique($touchedIds) as $incidentId) {
+                \Nawasara\Secscan\Jobs\EvaluateIncidentJob::dispatch($incidentId);
+            }
+        }
 
         return response()->json(['success' => true, 'created' => $created, 'aggregated' => $aggregated]);
     }

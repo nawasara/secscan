@@ -144,6 +144,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Auto-block (Decision Engine)
+    |--------------------------------------------------------------------------
+    | Decides which attacker IPs to block at the Cloudflare edge (account-wide
+    | IP Access Rule). SAFETY FIRST — this action denies access, so the engine
+    | is conservative and heavily whitelisted.
+    |
+    |   enabled  — master kill switch. false = never block (engine won't run).
+    |   dry_run  — engine runs + records decisions but does NOT call Cloudflare.
+    |              Start here on a new deploy; watch the decisions, then flip off.
+    */
+    'autoblock' => [
+        'enabled' => env('SECSCAN_AUTOBLOCK_ENABLED', false),
+        'dry_run' => env('SECSCAN_AUTOBLOCK_DRYRUN', true),
+
+        // --- Threshold (conservative): ALL must hold to block ---
+        // Only these incident types are ever blockable (clear attacks, not
+        // light recon). 4xx_storm / scanner noise is alert-only.
+        'blockable_types' => [
+            'sql_injection', 'directory_traversal', 'webshell_upload',
+            'exploit_chain', 'vulnerability_scan',
+            'file_scan_webshell', 'file_scan_backdoor', 'file_scan_exploit',
+        ],
+        'min_score'       => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
+        'min_occurrences' => env('SECSCAN_AUTOBLOCK_MIN_OCCURRENCES', 3),
+
+        // --- Whitelist (checked FIRST, fail-safe) ---
+        // Cloudflare edge ranges — a safety net so a stray CF-attributed
+        // incident can never blackhole Cloudflare (which would down every site).
+        'whitelist_cloudflare' => true,
+        // Extra CIDRs never to block: office/OPD public IPs, internal servers,
+        // monitoring. Fill these in per deployment (comma-separated env or here).
+        'whitelist_cidrs' => array_filter(explode(',', (string) env('SECSCAN_AUTOBLOCK_WHITELIST', ''))),
+        // Known good crawler ranges (Googlebot/Bingbot) — kept out of blocks so
+        // SEO isn't harmed. Verified by CIDR (coarse but safe).
+        'whitelist_search_bots' => true,
+
+        // CF IP Access Rule notes tag prefix (for audit + bulk cleanup).
+        'notes_prefix' => 'nawasara-autoblock',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Agent binary distribution
     |--------------------------------------------------------------------------
     | The /agent/download/{version}/{os}/{arch}/nawasara-agent endpoint

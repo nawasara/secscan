@@ -79,6 +79,17 @@ class SecscanServiceProvider extends ServiceProvider
             'description' => 'Situs menunjukkan sinyal mencurigakan yang perlu verifikasi',
             'subject_template' => '[{severity}] {context.site_name} mencurigakan: {context.threat_type} (skor {context.score})',
         ]));
+
+        // Fired by the Decision Engine when an attacker IP is auto-blocked at
+        // the Cloudflare edge (or would be, in dry-run).
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => 'secscan.ip.autoblocked',
+            'severity' => 'warning',
+            'category' => 'security',
+            'cooldown_minutes' => 0, // each block is a distinct action worth notifying
+            'description' => 'IP penyerang otomatis di-block di Cloudflare edge oleh Decision Engine',
+            'subject_template' => '[auto-block] IP {context.ip} di-block ({context.reason}, skor {context.score})',
+        ]));
     }
 
     /**
