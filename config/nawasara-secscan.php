@@ -120,8 +120,8 @@ return [
     'http_probe' => [
         'enabled'             => env('SECSCAN_HTTP_PROBE_ENABLED', true),
         'scan_interval'       => env('SECSCAN_HTTP_SCAN_INTERVAL', 360),  // minutes; default 6 hours
-        'timeout_seconds'     => env('SECSCAN_HTTP_TIMEOUT', 15),
-        'delay_ms_per_host'   => env('SECSCAN_HTTP_DELAY_MS', 2000),    // delay between requests to same host
+        'timeout_seconds'     => env('SECSCAN_HTTP_TIMEOUT', 12),
+        'delay_ms_per_host'   => env('SECSCAN_HTTP_DELAY_MS', 800),     // delay between requests to same host
         'daily_quota_per_host' => env('SECSCAN_HTTP_DAILY_QUOTA', 100), // max fetches per host per day
         'backoff_after_failures' => 3,
         'backoff_minutes'     => 30,

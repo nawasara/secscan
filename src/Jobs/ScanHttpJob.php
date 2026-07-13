@@ -22,7 +22,7 @@ use Nawasara\Sync\Jobs\AbstractSyncJob;
  */
 class ScanHttpJob extends AbstractSyncJob
 {
-    public int $timeout = 600;
+    public int $timeout = 900;
 
     protected function service(): string  { return 'secscan'; }
     protected function action(): string   { return 'scan_http'; }
@@ -38,14 +38,33 @@ class ScanHttpJob extends AbstractSyncJob
 
         $hostnames = $this->resolveHostnames($suffix);
 
+        // Time-box the scan so it always finishes cleanly before the worker
+        // timeout kills it (which corrupts failed_jobs + leaves the sync tracker
+        // stuck). With many hosts × throttle, one pass can exceed the limit; we
+        // stop early and the next scheduled run (every 6h) resumes from where a
+        // rotating offset left off, so all hosts get covered over time.
+        $started    = microtime(true);
+        $budgetSecs = max(60, $this->timeout - 120); // leave a safety margin
+        $timedOut   = false;
+
+        // Rotate the starting point each run so we don't always scan the same
+        // prefix of hosts and starve the tail of the list.
+        $hostnames = $this->rotateHostList($hostnames);
+
         $scanned = 0;
         $findings = 0;
         $created  = 0;
         $updated  = 0;
         $alerted  = 0;
         $skipped  = 0;
+        $hostsDone = 0;
 
         foreach ($hostnames as $hostname) {
+            if (microtime(true) - $started > $budgetSecs) {
+                $timedOut = true;
+                break; // resume remaining hosts next scheduled run
+            }
+
             $pathsToScan = $this->pathsForHostname($hostname);
 
             foreach ($pathsToScan as $path) {
@@ -95,17 +114,50 @@ class ScanHttpJob extends AbstractSyncJob
                     }
                 }
             }
+
+            $hostsDone++;
+            // Remember how far we got so the next run resumes after this host.
+            \Illuminate\Support\Facades\Cache::put('secscan:http:scan_offset', $this->scanOffset + $hostsDone, now()->addDay());
         }
 
         return [
-            'hostnames_scanned' => count($hostnames),
+            'hosts_total'       => count($hostnames),
+            'hosts_scanned'     => $hostsDone,
             'paths_scanned'     => $scanned,
             'paths_skipped'     => $skipped,
             'findings_detected' => $findings,
             'created'           => $created,
             'updated'           => $updated,
             'alerted'           => $alerted,
+            'timed_out'         => $timedOut, // true = stopped early, resumes next run
         ];
+    }
+
+    /** Offset into the host list used this run (persisted for rotation). */
+    private int $scanOffset = 0;
+
+    /**
+     * Rotate the host list so each run starts after where the previous run
+     * stopped — over successive runs every host gets covered even when a single
+     * pass is time-boxed. The offset wraps around the list length.
+     *
+     * @param  list<string>  $hostnames
+     * @return list<string>
+     */
+    private function rotateHostList(array $hostnames): array
+    {
+        $count = count($hostnames);
+        if ($count === 0) {
+            return $hostnames;
+        }
+        $offset = (int) \Illuminate\Support\Facades\Cache::get('secscan:http:scan_offset', 0) % $count;
+        $this->scanOffset = $offset;
+
+        // Start from $offset, wrapping around.
+        return array_merge(
+            array_slice($hostnames, $offset),
+            array_slice($hostnames, 0, $offset),
+        );
     }
 
     /**
