@@ -54,7 +54,11 @@
                     <x-slot:table>
                         @foreach ($blocks as $b)
                             <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                                <td class="px-4 py-3 font-mono text-sm text-neutral-800 dark:text-neutral-100">{{ $b->ip }}</td>
+                                <td class="px-4 py-3 font-mono text-sm">
+                                    <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $b->ip]) }}" wire:navigate
+                                       class="text-neutral-800 dark:text-neutral-100 hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline"
+                                       title="Lihat timeline aktivitas IP ini">{{ $b->ip }}</a>
+                                </td>
                                 <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">{{ ucwords(str_replace('_', ' ', $b->reason)) }}</td>
                                 <td class="px-4 py-3">
                                     @if ($b->dry_run)
@@ -68,8 +72,11 @@
                                 </td>
                                 <td class="px-4 py-3 text-sm">
                                     @if ($b->incident_id)
-                                        <a href="{{ route('nawasara-secscan.incidents') }}" wire:navigate
-                                           class="text-emerald-600 dark:text-emerald-400 hover:underline">#{{ $b->incident_id }}</a>
+                                        {{-- Link to the IP timeline (what this IP did over time),
+                                             which is more useful here than the flat incidents list. --}}
+                                        <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $b->ip]) }}" wire:navigate
+                                           class="text-emerald-600 dark:text-emerald-400 hover:underline"
+                                           title="Lihat timeline aktivitas IP ini">#{{ $b->incident_id }}</a>
                                     @else
                                         <span class="text-neutral-400">—</span>
                                     @endif

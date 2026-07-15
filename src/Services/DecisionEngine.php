@@ -2,6 +2,8 @@
 
 namespace Nawasara\Secscan\Services;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Models\SecurityIncident;
@@ -54,13 +56,8 @@ class DecisionEngine
             return $this->verdict('whitelisted', 'whitelist:'.$wl['reason'], $ip);
         }
 
-        // Gate 2 — already blocked? (either this incident, or an active block
-        // for the same IP from an earlier incident).
         if ($incident->blocked_at !== null) {
             return $this->verdict('already', 'incident already blocked', $ip);
-        }
-        if (IpBlock::active()->where('ip', $ip)->exists()) {
-            return $this->verdict('already', 'ip already blocked', $ip);
         }
 
         // Gate 3 — conservative threshold.
@@ -68,8 +65,30 @@ class DecisionEngine
             return $this->verdict('alert', 'below block threshold', $ip);
         }
 
-        // Decision: BLOCK.
-        return $this->doBlock($incident, $ip);
+        // Serialize the "already-blocked?" check + create for this IP. Without a
+        // lock, two incidents for the same IP evaluated on parallel workers both
+        // pass Gate 2 before either inserts, producing two active IpBlock rows
+        // for one IP (real bug seen during backfill). A short per-IP lock makes
+        // check-then-create atomic; the loser sees the row and skips.
+        $lock = Cache::lock('secscan:autoblock:'.$ip, 10);
+
+        try {
+            $lock->block(5); // wait up to 5s for the lock
+
+            // Gate 2 — already blocked? (this IP, from this or an earlier incident)
+            if (IpBlock::active()->where('ip', $ip)->exists()) {
+                return $this->verdict('already', 'ip already blocked', $ip);
+            }
+
+            // Decision: BLOCK.
+            return $this->doBlock($incident, $ip);
+        } catch (LockTimeoutException $e) {
+            // Another evaluation for this IP is in flight — treat as already
+            // handled rather than risk a duplicate.
+            return $this->verdict('already', 'ip block in progress', $ip);
+        } finally {
+            optional($lock)->release();
+        }
     }
 
     /** All three conditions must hold. */
