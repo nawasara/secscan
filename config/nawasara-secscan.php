@@ -159,13 +159,18 @@ return [
         'dry_run' => env('SECSCAN_AUTOBLOCK_DRYRUN', true),
 
         // --- Threshold (conservative): ALL must hold to block ---
-        // Only these incident types are ever blockable (clear attacks, not
-        // light recon). 4xx_storm / scanner noise is alert-only.
-        'blockable_types' => [
-            'sql_injection', 'directory_traversal', 'webshell_upload',
-            'exploit_chain', 'vulnerability_scan',
-            'file_scan_webshell', 'file_scan_backdoor', 'file_scan_exploit',
-        ],
+        // Incident types that are ever blockable. Override per-deployment with a
+        // comma-separated SECSCAN_AUTOBLOCK_TYPES env. The default now also
+        // blocks brute_force, ssh_root_login, xss, and 4xx_storm — for 4xx_storm
+        // the min_occurrences gate is what keeps light recon out (only sustained
+        // storms, hundreds of 4xx from one IP, cross the threshold). Whitelist
+        // (office CIDR + Cloudflare + search bots) is still checked first.
+        'blockable_types' => array_filter(explode(',', (string) env(
+            'SECSCAN_AUTOBLOCK_TYPES',
+            'sql_injection,directory_traversal,webshell_upload,exploit_chain,'
+            .'vulnerability_scan,file_scan_webshell,file_scan_backdoor,file_scan_exploit,'
+            .'brute_force,ssh_root_login,xss,4xx_storm'
+        ))),
         'min_score'       => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
         'min_occurrences' => env('SECSCAN_AUTOBLOCK_MIN_OCCURRENCES', 3),
 
