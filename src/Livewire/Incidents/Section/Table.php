@@ -5,6 +5,7 @@ namespace Nawasara\Secscan\Livewire\Incidents\Section;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Models\SecurityIncident;
 use Nawasara\Ui\Livewire\Concerns\HasExport;
 use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
@@ -93,6 +94,20 @@ class Table extends Component
 
         $incidents = $query->paginate(25);
 
+        // Which of the IPs on this page are currently blocked at the edge? The
+        // "Blocked" badge reflects IP state, not whether THIS incident triggered
+        // the block — an IP blocked via one incident is still blocked for all of
+        // its incidents. One query for the page's IPs (no N+1).
+        $pageIps = collect($incidents->items())
+            ->pluck('source_ip')->filter()->unique()->all();
+        $blockedIps = $pageIps
+            ? IpBlock::where('status', IpBlock::STATUS_ACTIVE)
+                ->whereIn('ip', $pageIps)
+                ->pluck('ip')
+                ->flip() // → ['1.2.3.4' => idx] for O(1) isset() lookup in blade
+                ->all()
+            : [];
+
         $typeOptions = SecurityIncident::query()
             ->selectRaw('type, COUNT(*) as cnt')
             ->groupBy('type')
@@ -106,6 +121,7 @@ class Table extends Component
         return view('nawasara-secscan::livewire.pages.incidents.section.table', [
             'incidents'   => $incidents,
             'typeOptions' => $typeOptions,
+            'blockedIps'  => $blockedIps,
         ]);
     }
 }

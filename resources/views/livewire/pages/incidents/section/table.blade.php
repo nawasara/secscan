@@ -84,8 +84,10 @@
                                            class="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
                                             {{ $inc->source_ip }}
                                         </a>
-                                        @if($inc->blocked_at)
-                                            <x-nawasara-ui::badge color="danger" title="IP di-block {{ $inc->blocked_at->diffForHumans() }}">Blocked</x-nawasara-ui::badge>
+                                        {{-- Badge reflects IP state: if this source_ip is blocked at
+                                             the edge (via ANY incident), show Blocked here too. --}}
+                                        @if(isset($blockedIps[$inc->source_ip]))
+                                            <x-nawasara-ui::badge color="danger" title="IP ini sedang di-block di Cloudflare">Blocked</x-nawasara-ui::badge>
                                         @endif
                                     </span>
                                 @else
