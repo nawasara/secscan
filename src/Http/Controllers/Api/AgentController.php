@@ -27,7 +27,7 @@ class AgentController extends Controller
             'os'            => 'nullable|string|max:64',
             'arch'          => 'nullable|string|max:16',
             'agent_version' => 'nullable|string|max:32',
-            'web_server'    => 'nullable|in:nginx,apache,none',
+            'web_server'    => 'nullable|in:nginx,apache,caddy,frankenphp,traefik,none',
             'ip_local'      => 'nullable|ip',
         ]);
 
