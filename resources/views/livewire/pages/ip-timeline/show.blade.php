@@ -159,6 +159,19 @@
                                                 <span class="font-semibold text-neutral-700 dark:text-neutral-300">Score: {{ $inc->score }}</span>
                                             </div>
 
+                                            @php
+                                                $incHosts = collect($inc->evidence ?? [])->pluck('host')->filter()->unique()->values();
+                                            @endphp
+                                            @if ($incHosts->isNotEmpty())
+                                                <div class="flex flex-wrap gap-1.5 mb-1.5">
+                                                    @foreach ($incHosts as $h)
+                                                        <span class="inline-flex items-center gap-1 rounded bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-mono text-amber-700 dark:text-amber-300">
+                                                            <x-lucide-globe class="size-3" />{{ $h }}
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+
                                             @if ($inc->evidence)
                                                 <div class="space-y-1">
                                                     @foreach (array_slice($inc->evidence, 0, 3) as $ev)

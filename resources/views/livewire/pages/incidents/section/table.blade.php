@@ -193,15 +193,38 @@
                 </div>
 
                 @if ($selectedIncident->evidence)
+                    @php
+                        // Distinct target hosts/domains across this incident's evidence
+                        // (agent captures the vhost per request, e.g. WHM domlogs).
+                        $evHosts = collect($selectedIncident->evidence)
+                            ->pluck('host')->filter()->unique()->values();
+                    @endphp
+
+                    @if ($evHosts->isNotEmpty())
+                        <div>
+                            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">Target (Subdomain)</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                @foreach ($evHosts as $h)
+                                    <span class="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-900/30 px-2 py-1 text-xs font-mono font-medium text-amber-700 dark:text-amber-300">
+                                        <x-lucide-globe class="size-3" />{{ $h }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
                     <div>
                         <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">Evidence</p>
                         <div class="space-y-2">
                             @foreach ($selectedIncident->evidence as $ev)
                                 <div class="bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 text-xs font-mono">
-                                    <div class="text-neutral-400 dark:text-neutral-500 mb-1">
-                                        {{ $ev['timestamp'] ?? '' }}
+                                    <div class="text-neutral-400 dark:text-neutral-500 mb-1 flex flex-wrap items-center gap-x-1.5">
+                                        <span>{{ $ev['timestamp'] ?? '' }}</span>
                                         @if (!empty($ev['matched_rule']))
                                             · <span class="text-emerald-600 dark:text-emerald-400">{{ $ev['matched_rule'] }}</span>
+                                        @endif
+                                        @if (!empty($ev['host']))
+                                            · <span class="text-amber-600 dark:text-amber-400">{{ $ev['host'] }}</span>
                                         @endif
                                     </div>
                                     <div class="text-neutral-800 dark:text-neutral-200 break-all">{{ $ev['raw'] ?? json_encode($ev) }}</div>
