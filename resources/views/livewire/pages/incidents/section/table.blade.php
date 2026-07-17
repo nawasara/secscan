@@ -52,7 +52,7 @@
                 description="Belum ada insiden yang dilaporkan oleh agent." />
         @else
             <x-nawasara-ui::table stickyLast
-                :headers="['Severity', 'Tipe', 'Source IP', 'Score', 'Kejadian', 'Agent', 'Terdeteksi', 'Terakhir', '']">
+                :headers="['Severity', 'Tipe', 'Source IP', 'Host', 'Score', 'Kejadian', 'Agent', 'Terdeteksi', 'Terakhir', '']">
                 <x-slot:table>
                     @foreach ($incidents as $inc)
                         <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -92,6 +92,29 @@
                                     </span>
                                 @else
                                     <span class="text-neutral-400 dark:text-neutral-600 italic">filesystem</span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-sm">
+                                @php
+                                    // Distinct target vhosts/domains recorded in this incident's evidence.
+                                    $incHosts = collect($inc->evidence ?? [])->pluck('host')->filter()->unique()->values();
+                                @endphp
+                                @if ($incHosts->isNotEmpty())
+                                    <span class="inline-flex flex-wrap items-center gap-1">
+                                        @foreach ($incHosts->take(2) as $h)
+                                            <a href="{{ route('nawasara-secscan.ip-timeline', ['ip' => $inc->source_ip]) }}"
+                                               @if($inc->source_ip) wire:navigate @endif
+                                               class="inline-flex items-center gap-1 rounded bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 font-mono text-xs text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                                               title="Target: {{ $h }}">
+                                                <x-lucide-globe class="size-3" />{{ $h }}
+                                            </a>
+                                        @endforeach
+                                        @if ($incHosts->count() > 2)
+                                            <span class="text-xs text-neutral-400 dark:text-neutral-500" title="{{ $incHosts->implode(', ') }}">+{{ $incHosts->count() - 2 }}</span>
+                                        @endif
+                                    </span>
+                                @else
+                                    <span class="text-neutral-300 dark:text-neutral-600">—</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
