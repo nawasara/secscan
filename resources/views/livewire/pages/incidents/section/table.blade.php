@@ -5,6 +5,7 @@
             <div class="flex flex-wrap items-center gap-2 shrink-0">
                 <x-nawasara-ui::filter-panel
                     label="Filter"
+                    :showChips="false"
                     :state="['filterSeverity' => $filterSeverity, 'filterType' => $filterType]"
                     :dimensions="['filterSeverity' => 'Severity', 'filterType' => 'Tipe Insiden']">
 
@@ -34,11 +35,21 @@
             <x-nawasara-ui::search-input model="search" placeholder="Cari IP sumber…" />
         </div>
 
-        <div wire:ignore data-filter-chips></div>
-
-        @if ($search !== '')
+        {{-- Active-filter chips rendered SERVER-SIDE (Livewire), so they survive a
+             pagination morph. The filter-panel is set :showChips="false" (its
+             Alpine-teleported chips reset visually on a page-change morph);
+             rendering chips here from component state is durable. --}}
+        @if ($search !== '' || $filterSeverity !== '' || $filterType !== '')
             <div class="flex flex-wrap items-center gap-2">
-                <x-nawasara-ui::filter-chip label="Cari: {{ $search }}" model="search" />
+                @if ($search !== '')
+                    <x-nawasara-ui::filter-chip label="Cari: {{ $search }}" model="search" />
+                @endif
+                @if ($filterSeverity !== '')
+                    <x-nawasara-ui::filter-chip label="Severity: {{ ucfirst($filterSeverity) }}" model="filterSeverity" />
+                @endif
+                @if ($filterType !== '')
+                    <x-nawasara-ui::filter-chip label="Tipe: {{ ucwords(str_replace('_', ' ', $filterType)) }}" model="filterType" />
+                @endif
             </div>
         @endif
     </div>
