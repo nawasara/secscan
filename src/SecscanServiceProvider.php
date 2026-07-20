@@ -128,9 +128,21 @@ class SecscanServiceProvider extends ServiceProvider
                 ->everyMinute()
                 ->withoutOverlapping(2);
 
-            // Daily security digest — one recap e-mail each morning.
-            if (config('nawasara-secscan.digest.enabled', true)) {
-                $at = (string) config('nawasara-secscan.digest.at', '07:00');
+            // Daily security digest — one recap e-mail each morning. Enabled flag
+            // and send time are UI-managed (nawasara_settings) with the config/env
+            // value as the default; wrapped so a DB hiccup can't break scheduling.
+            $setting = function (string $key, mixed $default) {
+                try {
+                    return class_exists(\Nawasara\Core\Models\Setting::class)
+                        ? \Nawasara\Core\Models\Setting::get($key, $default)
+                        : $default;
+                } catch (\Throwable $e) {
+                    return $default;
+                }
+            };
+
+            if ((bool) $setting('secscan.digest.enabled', config('nawasara-secscan.digest.enabled', true))) {
+                $at = (string) $setting('secscan.digest.at', config('nawasara-secscan.digest.at', '07:00'));
                 // Guard against a malformed value breaking the whole schedule.
                 if (! preg_match('/^\d{1,2}:\d{2}$/', $at)) {
                     $at = '07:00';

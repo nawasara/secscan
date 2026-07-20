@@ -20,6 +20,7 @@ class PermissionSeeder extends Seeder
             'secscan.agent.scan',      // triage file scanner findings (Phase 3)
             'secscan.export',          // export any secscan table (csv/xlsx/json)
             'secscan.ip-block.manage', // view IP blocks + manual unblock (Decision Engine)
+            'secscan.settings.manage', // notification settings (digest + alert recipients)
         ];
 
         foreach ($permissions as $permission) {

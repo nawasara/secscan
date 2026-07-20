@@ -64,7 +64,11 @@ class SendDailyDigestJob implements ShouldQueue
         $data = $this->collect($start, $end, $tz);
 
         // Nothing happened and the operator opted out of empty reports — skip.
-        if ($data['total'] === 0 && ! config('nawasara-secscan.digest.send_when_empty', true)) {
+        $sendWhenEmpty = class_exists(\Nawasara\Core\Models\Setting::class)
+            ? (bool) \Nawasara\Core\Models\Setting::get('secscan.digest.send_when_empty', config('nawasara-secscan.digest.send_when_empty', true))
+            : (bool) config('nawasara-secscan.digest.send_when_empty', true);
+
+        if ($data['total'] === 0 && ! $sendWhenEmpty) {
             Log::info('[secscan] daily digest: no incidents, skipping (send_when_empty=false)');
 
             return;
@@ -108,7 +112,20 @@ class SendDailyDigestJob implements ShouldQueue
      */
     protected function recipients(): array
     {
-        $configured = collect((array) config('nawasara-secscan.digest.recipients', []))
+        // UI-managed setting wins; env/config is the untouched-deployment default.
+        $fromSetting = class_exists(\Nawasara\Core\Models\Setting::class)
+            ? \Nawasara\Core\Models\Setting::get('secscan.digest.recipients', null)
+            : null;
+
+        $raw = $fromSetting !== null && $fromSetting !== ''
+            ? $fromSetting
+            : config('nawasara-secscan.digest.recipients', []);
+
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,;]+/', $raw) ?: [];
+        }
+
+        $configured = collect((array) $raw)
             ->map(fn ($e) => trim((string) $e))
             ->filter(fn ($e) => $e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL));
 

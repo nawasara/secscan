@@ -46,6 +46,13 @@ return [
                 'permission' => 'secscan.ip-block.manage',
                 'navigate' => true,
             ],
+            [
+                'label' => 'Notifikasi',
+                'icon' => 'lucide-bell-ring',
+                'url' => url($prefix.'/settings/notification'),
+                'permission' => 'secscan.settings.manage',
+                'navigate' => true,
+            ],
         ],
     ],
 ];

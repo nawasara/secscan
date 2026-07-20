@@ -9,6 +9,7 @@ use Nawasara\Secscan\Livewire\Findings\Index as FindingsIndex;
 use Nawasara\Secscan\Livewire\Incidents\Index as IncidentsIndex;
 use Nawasara\Secscan\Livewire\IpBlocks\Index as IpBlocksIndex;
 use Nawasara\Secscan\Livewire\IpTimeline\Show as IpTimelineShow;
+use Nawasara\Secscan\Livewire\Settings\Notification as SettingsNotification;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 
 Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function () {
@@ -40,6 +41,10 @@ Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function (
         ->middleware(PermissionMiddleware::using('secscan.view'))
         ->where('ip', '[0-9a-fA-F.:]+')
         ->name('nawasara-secscan.ip-timeline');
+
+    Route::get('settings/notification', SettingsNotification::class)
+        ->middleware(PermissionMiddleware::using('secscan.settings.manage'))
+        ->name('nawasara-secscan.settings.notification');
 });
 
 // Agent API routes are registered in routes/api.php (root app) to avoid
