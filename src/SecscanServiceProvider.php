@@ -12,6 +12,7 @@ use Nawasara\Alerting\Models\AlertRule;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
 use Nawasara\Secscan\Jobs\ScanHttpJob;
 use Nawasara\Secscan\Jobs\ScanWordpressJob;
+use Nawasara\Secscan\Jobs\SendDailyDigestJob;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Services\FindingScorer;
 use Nawasara\Secscan\Services\HtmlSignalDetector;
@@ -126,6 +127,21 @@ class SecscanServiceProvider extends ServiceProvider
                 ->name('nawasara-secscan:check-agent-status')
                 ->everyMinute()
                 ->withoutOverlapping(2);
+
+            // Daily security digest — one recap e-mail each morning.
+            if (config('nawasara-secscan.digest.enabled', true)) {
+                $at = (string) config('nawasara-secscan.digest.at', '07:00');
+                // Guard against a malformed value breaking the whole schedule.
+                if (! preg_match('/^\d{1,2}:\d{2}$/', $at)) {
+                    $at = '07:00';
+                }
+                $schedule->call(function () {
+                    SendDailyDigestJob::dispatch();
+                })
+                    ->name('nawasara-secscan:daily-digest')
+                    ->dailyAt($at)
+                    ->withoutOverlapping(30);
+            }
 
             // F2 HTTP probe — runs less frequently (default every 6 hours).
             // Config is in minutes; convert to hours for cron (min 1h, max 24h).

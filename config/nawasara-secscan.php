@@ -221,4 +221,27 @@ return [
         // Add extra trusted domains per deployment if needed, e.g.:
         // 'embed.example.go.id',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Laporan harian (daily digest)
+    |--------------------------------------------------------------------------
+    | One e-mail each morning summarising the last 24 hours: incidents by
+    | severity/type, top attacker IPs, which sites were targeted, and what the
+    | Decision Engine blocked. Complements the real-time per-incident alerts.
+    |
+    |   SECSCAN_DIGEST_ENABLED=true
+    |   SECSCAN_DIGEST_AT=07:00                 # jam kirim (waktu server)
+    |   SECSCAN_DIGEST_RECIPIENTS=csirt@ponorogo.go.id,kominfo@ponorogo.go.id
+    |   SECSCAN_DIGEST_SEND_WHEN_EMPTY=true     # tetap kirim walau 0 insiden
+    |
+    | Recipients kosong => fallback ke audience alerting severity "critical",
+    | jadi laporan tetap sampai ke seseorang.
+    */
+    'digest' => [
+        'enabled' => env('SECSCAN_DIGEST_ENABLED', true),
+        'at' => env('SECSCAN_DIGEST_AT', '07:00'),
+        'recipients' => array_filter(array_map('trim', explode(',', (string) env('SECSCAN_DIGEST_RECIPIENTS', '')))),
+        'send_when_empty' => env('SECSCAN_DIGEST_SEND_WHEN_EMPTY', true),
+    ],
 ];
