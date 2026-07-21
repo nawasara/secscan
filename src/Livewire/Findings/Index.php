@@ -129,7 +129,7 @@ class Index extends Component
         }
 
         $this->triageReason = '';
-        $this->dispatch('close-modal', 'secscan-finding-detail');
+        $this->dispatch('modal-close:secscan-finding-detail');
         $this->dispatch('toast', ['type' => 'success', 'message' => 'Status temuan diperbarui.']);
     }
 

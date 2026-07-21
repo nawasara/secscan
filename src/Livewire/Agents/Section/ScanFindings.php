@@ -91,7 +91,7 @@ class ScanFindings extends Component
         ]);
 
         $this->triageId = null;
-        $this->dispatch('close-modal', 'scan-triage-' . $this->agentDbId);
+        $this->dispatch('modal-close:scan-triage-' . $this->agentDbId);
         $this->dispatch('toast', type: 'success', message: 'Finding updated.');
     }
 

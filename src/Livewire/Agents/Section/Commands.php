@@ -77,7 +77,7 @@ class Commands extends Component
 
         $this->reset('action', 'paramIp');
         $this->dispatch('command-issued');
-        $this->dispatch('close-modal', 'modal-issue-command');
+        $this->dispatch('modal-close:modal-issue-command');
 
         session()->flash('flash.bannerStyle', 'success');
         session()->flash('flash.banner', 'Perintah dikirim, menunggu approval.');
