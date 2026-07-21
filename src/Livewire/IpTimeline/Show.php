@@ -4,7 +4,9 @@ namespace Nawasara\Secscan\Livewire\IpTimeline;
 
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Secscan\Services\IpGeolocator;
 use Nawasara\Ui\Livewire\Concerns\HasTimeWindow;
 
 class Show extends Component
@@ -66,6 +68,44 @@ class Show extends Component
             'last_seen'  => $row->last_seen,
             'correlated' => (int) ($row->correlated ?? 0),
         ];
+    }
+
+    /**
+     * Where the IP comes from. Cached upstream for a month, and null whenever
+     * the lookup is disabled or unreachable — the view treats it as optional.
+     */
+    #[Computed]
+    public function geo(): ?array
+    {
+        return app(IpGeolocator::class)->locate($this->ip);
+    }
+
+    /**
+     * Current block state for this IP.
+     *
+     * `dry_run` matters here: the Decision Engine records a decision to block
+     * even when enforcement is off, so "ada baris di tabel" is NOT the same as
+     * "traffic is actually being stopped at Cloudflare". Surfacing them as the
+     * same thing would tell an analyst the threat is handled when it isn't.
+     */
+    #[Computed]
+    public function blockStatus(): array
+    {
+        $block = IpBlock::where('ip', $this->ip)
+            ->orderByDesc('blocked_at')
+            ->first();
+
+        if ($block === null) {
+            return ['state' => 'none', 'block' => null];
+        }
+
+        $state = match (true) {
+            $block->status === IpBlock::STATUS_REMOVED => 'removed',
+            (bool) $block->dry_run => 'dry_run',
+            default => 'active',
+        };
+
+        return ['state' => $state, 'block' => $block];
     }
 
     #[Computed]

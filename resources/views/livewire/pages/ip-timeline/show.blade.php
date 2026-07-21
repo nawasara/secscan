@@ -24,6 +24,46 @@
             </div>
         </x-nawasara-ui::page-header>
 
+        {{-- Block status — the first thing an analyst needs to know. "dry_run" is
+             called out explicitly: the Decision Engine logs a block decision even
+             when enforcement is off, and reading that as "handled" would be wrong. --}}
+        @php($blk = $this->blockStatus)
+        <div class="mb-6">
+            @if ($blk['state'] === 'active')
+                <div class="flex flex-wrap items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 px-4 py-3">
+                    <x-lucide-shield-ban class="size-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span class="text-sm font-medium text-rose-700 dark:text-rose-300">Diblokir di Cloudflare</span>
+                    <span class="text-xs text-rose-600/80 dark:text-rose-400/80">
+                        sejak {{ $blk['block']->blocked_at?->format('d M Y H:i') }}
+                        @if ($blk['block']->reason) &middot; {{ $blk['block']->reason }} @endif
+                        &middot; {{ $blk['block']->blocked_by ? 'manual' : 'otomatis' }}
+                    </span>
+                </div>
+            @elseif ($blk['state'] === 'dry_run')
+                <div class="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+                    <x-lucide-triangle-alert class="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span class="text-sm font-medium text-amber-700 dark:text-amber-300">Diputuskan blok, tapi belum ditegakkan</span>
+                    <span class="text-xs text-amber-600/80 dark:text-amber-400/80">
+                        mode dry-run &middot; {{ $blk['block']->blocked_at?->format('d M Y H:i') }} &middot; trafik IP ini MASIH masuk
+                    </span>
+                </div>
+            @elseif ($blk['state'] === 'removed')
+                <div class="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
+                    <x-lucide-shield-off class="size-4 text-neutral-500 dark:text-neutral-400 shrink-0" />
+                    <span class="text-sm font-medium text-neutral-700 dark:text-neutral-200">Blokir sudah dicabut</span>
+                    <span class="text-xs text-neutral-500 dark:text-neutral-400">
+                        {{ $blk['block']->unblocked_at?->format('d M Y H:i') }}
+                    </span>
+                </div>
+            @else
+                <div class="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
+                    <x-lucide-shield class="size-4 text-neutral-500 dark:text-neutral-400 shrink-0" />
+                    <span class="text-sm font-medium text-neutral-700 dark:text-neutral-200">Tidak diblokir</span>
+                    <span class="text-xs text-neutral-500 dark:text-neutral-400">IP ini tidak ada di daftar blokir Cloudflare</span>
+                </div>
+            @endif
+        </div>
+
         {{-- Summary stats --}}
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <x-nawasara-ui::stat-card compact
@@ -67,6 +107,23 @@
                                 {{ $this->summary['last_seen'] ? \Carbon\Carbon::parse($this->summary['last_seen'])->diffForHumans() : '—' }}
                             </dd>
                         </div>
+                        @if ($this->geo)
+                            <div>
+                                <dt class="text-neutral-500 dark:text-neutral-400 text-xs mb-0.5">Lokasi</dt>
+                                <dd class="text-neutral-800 dark:text-neutral-100">
+                                    @if ($this->geo['is_private'])
+                                        <span class="text-sky-600 dark:text-sky-400">{{ $this->geo['country'] }}</span>
+                                    @else
+                                        {{ collect([$this->geo['city'], $this->geo['country']])->filter()->implode(', ') ?: '—' }}
+                                    @endif
+                                </dd>
+                                @if ($this->geo['org'])
+                                    <dd class="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
+                                        {{ $this->geo['org'] }}
+                                    </dd>
+                                @endif
+                            </div>
+                        @endif
                         @if ($this->summary['correlated'] > 0)
                             <div>
                                 <dt class="text-neutral-500 dark:text-neutral-400 text-xs mb-0.5">Rantai Serangan</dt>

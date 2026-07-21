@@ -231,13 +231,41 @@ return [
     | Decision Engine blocked. Complements the real-time per-incident alerts.
     |
     |   SECSCAN_DIGEST_ENABLED=true
-    |   SECSCAN_DIGEST_AT=07:00                 # jam kirim (waktu server)
+    |   SECSCAN_DIGEST_AT=07:00                 # jam kirim (waktu SECSCAN_DIGEST_TIMEZONE)
+    |   SECSCAN_DIGEST_TIMEZONE=Asia/Jakarta    # bukan app.timezone (UTC)
     |   SECSCAN_DIGEST_RECIPIENTS=csirt@ponorogo.go.id,kominfo@ponorogo.go.id
     |   SECSCAN_DIGEST_SEND_WHEN_EMPTY=true     # tetap kirim walau 0 insiden
     |
     | Recipients kosong => fallback ke audience alerting severity "critical",
     | jadi laporan tetap sampai ke seseorang.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Geolokasi IP
+    |--------------------------------------------------------------------------
+    |
+    | Menampilkan asal IP penyerang (negara, kota, organisasi) di halaman
+    | timeline IP. Hasil di-cache 30 hari — geolokasi sebuah IP praktis tidak
+    | berubah, dan halaman yang sama dibuka berulang kali.
+    |
+    | Endpoint default ipinfo.io bisa dipakai tanpa token (~1000 request/hari,
+    | jauh di atas kebutuhan kita karena ada cache). Isi token kalau perlu
+    | kuota lebih besar atau data yang lebih lengkap.
+    |
+    |   SECSCAN_GEOIP_ENABLED=true
+    |   SECSCAN_GEOIP_TOKEN=                    # opsional
+    |
+    | Kalau lookup gagal, halaman tetap tampil normal — asal IP hanya konteks
+    | tambahan, bukan syarat render.
+    */
+    'geolocation' => [
+        'enabled' => env('SECSCAN_GEOIP_ENABLED', true),
+        'endpoint' => env('SECSCAN_GEOIP_ENDPOINT', 'https://ipinfo.io'),
+        'token' => env('SECSCAN_GEOIP_TOKEN', ''),
+        'timeout' => env('SECSCAN_GEOIP_TIMEOUT', 5),
+        'cache_days' => env('SECSCAN_GEOIP_CACHE_DAYS', 30),
+    ],
+
     'digest' => [
         'enabled' => env('SECSCAN_DIGEST_ENABLED', true),
         'at' => env('SECSCAN_DIGEST_AT', '07:00'),
