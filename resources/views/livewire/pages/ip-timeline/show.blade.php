@@ -27,7 +27,9 @@
         {{-- Block status — the first thing an analyst needs to know. "dry_run" is
              called out explicitly: the Decision Engine logs a block decision even
              when enforcement is off, and reading that as "handled" would be wrong. --}}
-        @php($blk = $this->blockStatus)
+        @php
+            $blk = $this->blockStatus;
+        @endphp
         <div class="mb-6">
             @if ($blk['state'] === 'active')
                 <div class="flex flex-wrap items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-800/50 bg-rose-50 dark:bg-rose-900/20 px-4 py-3">
