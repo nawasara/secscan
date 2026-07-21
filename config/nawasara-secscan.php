@@ -241,6 +241,8 @@ return [
     'digest' => [
         'enabled' => env('SECSCAN_DIGEST_ENABLED', true),
         'at' => env('SECSCAN_DIGEST_AT', '07:00'),
+        // 'at' is local wall-clock time in this zone, not app.timezone (UTC).
+        'timezone' => env('SECSCAN_DIGEST_TIMEZONE', 'Asia/Jakarta'),
         'recipients' => array_filter(array_map('trim', explode(',', (string) env('SECSCAN_DIGEST_RECIPIENTS', '')))),
         'send_when_empty' => env('SECSCAN_DIGEST_SEND_WHEN_EMPTY', true),
     ],

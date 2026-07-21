@@ -147,11 +147,21 @@ class SecscanServiceProvider extends ServiceProvider
                 if (! preg_match('/^\d{1,2}:\d{2}$/', $at)) {
                     $at = '07:00';
                 }
+                // The send time is what an operator typed into the UI, so it means
+                // local wall-clock time. app.timezone is UTC, and dailyAt() follows
+                // it unless told otherwise — without this the "07:00" digest fired
+                // at 07:00 UTC, i.e. 14:00 WIB.
+                $tz = (string) $setting(
+                    'secscan.digest.timezone',
+                    config('nawasara-secscan.digest.timezone', 'Asia/Jakarta')
+                );
+
                 $schedule->call(function () {
                     SendDailyDigestJob::dispatch();
                 })
                     ->name('nawasara-secscan:daily-digest')
                     ->dailyAt($at)
+                    ->timezone($tz)
                     ->withoutOverlapping(30);
             }
 
