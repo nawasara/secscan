@@ -131,8 +131,14 @@ class AgentController extends Controller
                 'mitre_technique' => $inc['mitre_technique'] ?? null,
                 'evidence'        => $inc['evidence'],
                 'metadata'        => $inc['metadata'] ?? null,
-                'detected_at'     => $inc['detected_at'],
-                'last_seen_at'    => $inc['detected_at'],
+                // Store the PARSED Carbon, not the raw string. The agent sends
+                // RFC3339 with an offset (e.g. +07:00); assigning the raw string
+                // to a datetime column keeps the wall-clock time as-is instead of
+                // normalising to app UTC, so detected_at ended up 7h ahead of the
+                // Laravel-set created_at — making a blocked IP look like it kept
+                // attacking hours later. $detectedAt (line above) is already UTC.
+                'detected_at'     => $detectedAt,
+                'last_seen_at'    => $detectedAt,
             ]);
             $created++;
             $touchedIds[] = $new->id;
