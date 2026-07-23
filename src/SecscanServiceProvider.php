@@ -35,6 +35,59 @@ class SecscanServiceProvider extends ServiceProvider
         $this->registerLivewire();
         $this->registerSchedule();
         $this->registerAlertRules();
+        $this->registerApiScopes();
+        $this->registerApiRoutes();
+    }
+
+    /**
+     * Register scope IP-block ke nawasara/api scope registry. Guard
+     * `class_exists` supaya secscan tetap jalan kalau nawasara/api tidak
+     * ter-install (API exposure opsional).
+     *
+     * Block IP adalah aksi TULIS yang menyentuh Cloudflare edge, jadi scope
+     * dipisah read / write / delete — klien read-only tidak bisa mengubah,
+     * dan "boleh block" bisa dipisahkan dari "boleh unblock".
+     */
+    public function registerApiScopes(): void
+    {
+        if (! class_exists(\Nawasara\Api\Support\ScopeRegistry::class)) {
+            return;
+        }
+
+        $registry = $this->app->make(\Nawasara\Api\Support\ScopeRegistry::class);
+
+        $registry->register(
+            'secscan.ipblock.read',
+            'Lihat daftar + detail IP yang di-block di Cloudflare (status, alasan, waktu). Read-only.',
+        );
+
+        $registry->register(
+            'secscan.ipblock.write',
+            'Block IP baru di Cloudflare edge. Menghormati flag dry_run global — token tidak bisa mem-bypass mode dry-run. Aksi tulis.',
+        );
+
+        $registry->register(
+            'secscan.ipblock.delete',
+            'Buka blokir IP (hapus rule di Cloudflare). Terpisah dari write supaya bisa kasih "boleh block, tidak boleh unblock".',
+        );
+    }
+
+    /**
+     * Mount route API ke prefix /api/v1/secscan. Cuma jalan kalau package
+     * nawasara/api terpasang (middleware api.auth, api.log, scope wajib ada).
+     */
+    public function registerApiRoutes(): void
+    {
+        if (! class_exists(\Nawasara\Api\ApiServiceProvider::class)) {
+            return;
+        }
+
+        $prefix = (string) config('nawasara-api.route.prefix', 'api/v1').'/secscan';
+
+        \Illuminate\Support\Facades\Route::prefix($prefix)
+            ->middleware(['api', 'api.auth', 'api.log'])
+            ->name('nawasara-api.secscan.')
+            ->group(__DIR__.'/../routes/api.php');
     }
 
     public function register(): void
