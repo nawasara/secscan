@@ -232,16 +232,32 @@
                                             @endif
 
                                             @if ($inc->evidence)
-                                                <div class="space-y-1">
+                                                {{-- Evidence: 3 baris pertama selalu tampil, sisanya di-expand
+                                                     via Alpine (murni client-side, tanpa roundtrip Livewire —
+                                                     datanya sudah ada di halaman). --}}
+                                                <div class="space-y-1" x-data="{ buka: false }">
                                                     @foreach (array_slice($inc->evidence, 0, 3) as $ev)
                                                         <div class="bg-neutral-50 dark:bg-neutral-900 rounded px-3 py-1.5 font-mono text-xs text-neutral-700 dark:text-neutral-300 break-all">
                                                             {{ $ev['raw'] ?? json_encode($ev) }}
                                                         </div>
                                                     @endforeach
+
                                                     @if (count($inc->evidence) > 3)
-                                                        <p class="text-xs text-neutral-400 dark:text-neutral-500 ps-3">
-                                                            +{{ count($inc->evidence) - 3 }} evidence lainnya
-                                                        </p>
+                                                        <div x-show="buka" x-collapse class="space-y-1">
+                                                            @foreach (array_slice($inc->evidence, 3) as $ev)
+                                                                <div class="bg-neutral-50 dark:bg-neutral-900 rounded px-3 py-1.5 font-mono text-xs text-neutral-700 dark:text-neutral-300 break-all">
+                                                                    {{ $ev['raw'] ?? json_encode($ev) }}
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+
+                                                        <button type="button" x-on:click="buka = !buka"
+                                                                class="inline-flex items-center gap-1 ps-3 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 hover:underline cursor-pointer">
+                                                            <x-lucide-chevron-down class="size-3 transition-transform"
+                                                                                   x-bind:class="buka && 'rotate-180'" />
+                                                            <span x-show="!buka">+{{ count($inc->evidence) - 3 }} evidence lainnya</span>
+                                                            <span x-show="buka" x-cloak>Sembunyikan evidence</span>
+                                                        </button>
                                                     @endif
                                                 </div>
                                             @endif

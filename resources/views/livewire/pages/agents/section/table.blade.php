@@ -47,9 +47,14 @@
                     @foreach ($agents as $agent)
                         <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
                             <td class="px-4 py-3">
-                                <div class="font-medium text-neutral-800 dark:text-neutral-100">
+                                {{-- Nama agent = tautan ke halaman detail. Sebelumnya detail hanya
+                                     bisa dicapai lewat dropdown di kolom aksi paling kanan, yang
+                                     tidak terlihat sebagai sesuatu yang bisa diklik. --}}
+                                <a href="{{ route('nawasara-secscan.agents.show', $agent->agent_id) }}"
+                                   wire:navigate
+                                   class="font-medium text-neutral-800 dark:text-neutral-100 hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline">
                                     {{ $agent->name }}
-                                </div>
+                                </a>
                                 <div class="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
                                     {{ $agent->agent_id }}
                                 </div>
