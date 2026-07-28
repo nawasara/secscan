@@ -165,11 +165,17 @@ return [
         // the min_occurrences gate is what keeps light recon out (only sustained
         // storms, hundreds of 4xx from one IP, cross the threshold). Whitelist
         // (office CIDR + Cloudflare + search bots) is still checked first.
+        //
+        // scanner_bot and request_flood cover volumetric abuse (agent v0.11.0+).
+        // A k6-driven flood against csirt.ponorogo.go.id sat at 3,191 occurrences
+        // and was never blocked, because neither type was listed here. Both are
+        // self-limiting by nature: scanner_bot only fires on scanner/load-tester
+        // user agents, and request_flood needs 300 requests a minute from one IP.
         'blockable_types' => array_filter(explode(',', (string) env(
             'SECSCAN_AUTOBLOCK_TYPES',
             'sql_injection,directory_traversal,webshell_upload,exploit_chain,'
             .'vulnerability_scan,file_scan_webshell,file_scan_backdoor,file_scan_exploit,'
-            .'brute_force,ssh_root_login,xss,4xx_storm'
+            .'brute_force,ssh_root_login,xss,4xx_storm,scanner_bot,request_flood'
         ))),
         'min_score'       => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
         'min_occurrences' => env('SECSCAN_AUTOBLOCK_MIN_OCCURRENCES', 3),
