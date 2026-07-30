@@ -228,7 +228,11 @@ class AgentController extends Controller
             'commands' => $commands->map(fn ($cmd) => [
                 'command_id' => $cmd->command_id,
                 'action'     => $cmd->action,
-                'params'     => $cmd->params ?? [],
+                // Force an object: an empty PHP array encodes as [], but the
+                // agent decodes params into map[string]any and rejects the
+                // WHOLE batch on a type mismatch — one param-less command was
+                // enough to stall every pending command behind it.
+                'params'     => (object) ($cmd->params ?: []),
                 'issued_at'  => $cmd->approved_at->toIso8601String(),
             ]),
         ]);
