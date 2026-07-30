@@ -5,13 +5,19 @@ namespace Nawasara\Secscan\Services;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Nawasara\Secscan\Models\AgentCommand;
 use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Models\SecurityIncident;
 use Nawasara\Secscan\Support\IpWhitelist;
 
 /**
- * Decides whether an incident's source IP should be blocked at the Cloudflare
- * edge, and records the decision. SAFETY-FIRST ordering:
+ * Decides whether an incident's source IP should be blocked, and records the
+ * decision. Blocks land at the Cloudflare edge and — when autoblock.host_block
+ * is on — also as an iptables/nftables rule on the agent that saw the attack,
+ * which is what covers an origin reachable directly on 80/443.
+ *
+ * SAFETY-FIRST ordering:
  *
  *   Gate 0 — master enabled? (kill switch)
  *   Gate 1 — WHITELIST (checked before anything else; fail-safe)
@@ -166,6 +172,8 @@ class DecisionEngine
             'score' => $incident->score, 'occ' => $incident->occurrences, 'cf_rule' => $cfRuleId,
         ]);
 
+        $this->queueHostBlock($incident, $ip, $block, $dryRun);
+
         // Notify operators. Alerter is optional at runtime — never let a missing
         // alerting package break the block path.
         try {
@@ -194,6 +202,119 @@ class DecisionEngine
     /**
      * @return array{action:string, reason:string, ip:?string, block_id:?int}
      */
+    /**
+     * Queue a host-level block on the agent that saw the attack, alongside the
+     * Cloudflare rule.
+     *
+     * A Cloudflare block only helps for traffic that actually reaches
+     * Cloudflare. Where an origin is reachable directly on 80/443 — which is
+     * the case for the WHM host, and true of any server whose public IP is
+     * known — an attacker simply skips the edge and the CF rule never applies.
+     * Observed in production: an IP blocked at the edge since 14 July was still
+     * hitting the origin two weeks later, 17k requests in a month.
+     *
+     * Blocking at the host with iptables/nftables closes that path. The two
+     * layers are complementary rather than redundant: Cloudflare absorbs the
+     * traffic before it costs the origin anything, and the host rule catches
+     * whatever bypasses the edge.
+     *
+     * Deliberately conservative:
+     *  - Opt-in via autoblock.host_block. Off means behaviour is unchanged.
+     *  - Commands are created as PENDING. The agent only ever fetches APPROVED
+     *    commands, so an admin still confirms before any firewall on a
+     *    production host is touched. Set host_block_auto_approve to skip that
+     *    step once the flow has been trusted in practice.
+     *  - Only the agent that reported the incident is targeted, not every
+     *    agent — the others never saw this attacker.
+     *  - Nothing is queued in dry-run.
+     */
+    protected function queueHostBlock(SecurityIncident $incident, string $ip, IpBlock $block, bool $dryRun): void
+    {
+        if ($dryRun || ! config('nawasara-secscan.autoblock.host_block', false)) {
+            return;
+        }
+
+        $agent = $incident->agent;
+        if (! $agent) {
+            return; // e.g. a filesystem finding with no reporting agent
+        }
+
+        try {
+            $autoApprove = (bool) config('nawasara-secscan.autoblock.host_block_auto_approve', false);
+
+            AgentCommand::create([
+                'command_id'  => (string) Str::uuid()->getHex(),
+                'agent_id'    => $agent->id,
+                'action'      => 'block_ip',
+                'params'      => ['ip' => $ip, 'reason' => $incident->type, 'block_id' => $block->id],
+                'status'      => $autoApprove ? AgentCommand::STATUS_APPROVED : AgentCommand::STATUS_PENDING,
+                'approved_at' => $autoApprove ? now() : null,
+            ]);
+
+            Log::info('[secscan] host block queued', [
+                'ip' => $ip, 'agent' => $agent->name,
+                'status' => $autoApprove ? 'approved' : 'pending approval',
+            ]);
+        } catch (\Throwable $e) {
+            // Never let this break the Cloudflare block that already succeeded.
+            Log::warning('[secscan] host block queue failed: '.$e->getMessage(), ['ip' => $ip]);
+        }
+    }
+
+    /**
+     * Queue the host-level counterpart of an unblock.
+     *
+     * Public because both unblock paths (the API controller and the Livewire
+     * page) must call it — lifting a block only at the edge while the host
+     * firewall still drops the IP would leave it blocked with no visible
+     * reason, which is worse than not blocking at all.
+     *
+     * Safe to call unconditionally: it returns early when host blocking is off
+     * or when no host block was ever queued for this IP.
+     */
+    public function queueHostUnblock(IpBlock $block, ?int $userId = null): void
+    {
+        if (! config('nawasara-secscan.autoblock.host_block', false)) {
+            return;
+        }
+
+        // Only undo on agents we actually sent a block to, so we never touch a
+        // host that was never involved.
+        $agentIds = AgentCommand::where('action', 'block_ip')
+            ->whereJsonContains('params->ip', $block->ip)
+            ->pluck('agent_id')
+            ->unique();
+
+        if ($agentIds->isEmpty()) {
+            return;
+        }
+
+        $autoApprove = (bool) config('nawasara-secscan.autoblock.host_block_auto_approve', false);
+
+        foreach ($agentIds as $agentId) {
+            try {
+                AgentCommand::create([
+                    'command_id'  => (string) Str::uuid()->getHex(),
+                    'agent_id'    => $agentId,
+                    'action'      => 'unblock_ip',
+                    'params'      => ['ip' => $block->ip, 'block_id' => $block->id],
+                    'status'      => $autoApprove ? AgentCommand::STATUS_APPROVED : AgentCommand::STATUS_PENDING,
+                    'approved_at' => $autoApprove ? now() : null,
+                    'approved_by' => $autoApprove ? $userId : null,
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('[secscan] host unblock queue failed: '.$e->getMessage(), [
+                    'ip' => $block->ip, 'agent_id' => $agentId,
+                ]);
+            }
+        }
+
+        Log::info('[secscan] host unblock queued', [
+            'ip' => $block->ip, 'agents' => $agentIds->count(),
+            'status' => $autoApprove ? 'approved' : 'pending approval',
+        ]);
+    }
+
     protected function verdict(string $action, string $reason, ?string $ip): array
     {
         return ['action' => $action, 'reason' => $reason, 'ip' => $ip, 'block_id' => null];

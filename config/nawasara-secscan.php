@@ -195,6 +195,24 @@ return [
         'high_confidence_score'       => env('SECSCAN_AUTOBLOCK_HIGH_SCORE', 90),
         'high_confidence_occurrences' => env('SECSCAN_AUTOBLOCK_HIGH_OCCURRENCES', 1),
 
+        // --- Host-level block (second layer, alongside Cloudflare) ---
+        // A Cloudflare rule only helps for traffic that reaches Cloudflare. Any
+        // origin reachable directly on 80/443 can simply be hit at its public
+        // IP, and the edge rule never applies — measured on the WHM host, where
+        // an IP blocked since 14 July was still landing 17k requests a month
+        // later.
+        //
+        // With this on, a block also queues a block_ip command for the agent
+        // that reported the incident, which drops the IP with iptables or
+        // nftables on that host.
+        //
+        // Requires executor.enabled on the agent, with block_ip in its
+        // allowed_actions. Commands are created PENDING and the agent only
+        // fetches APPROVED ones, so an admin confirms each firewall change
+        // until host_block_auto_approve is turned on.
+        'host_block'              => env('SECSCAN_AUTOBLOCK_HOST', false),
+        'host_block_auto_approve' => env('SECSCAN_AUTOBLOCK_HOST_AUTO_APPROVE', false),
+
         // --- Whitelist (checked FIRST, fail-safe) ---
         // Cloudflare edge ranges — a safety net so a stray CF-attributed
         // incident can never blackhole Cloudflare (which would down every site).

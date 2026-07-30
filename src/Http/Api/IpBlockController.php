@@ -206,6 +206,11 @@ class IpBlockController extends Controller
             'unblocked_at' => now(),
         ]);
 
+        // Lift the host-level firewall rule too, otherwise the IP stays dropped
+        // at the origin with nothing in the UI explaining why.
+        app(\Nawasara\Secscan\Services\DecisionEngine::class)
+            ->queueHostUnblock($block, $this->userId($request));
+
         Log::info('[secscan] API unblocked '.$ip, ['token' => $this->tokenId($request)]);
 
         return response()->json([

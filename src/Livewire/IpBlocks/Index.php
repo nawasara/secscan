@@ -9,6 +9,7 @@ use Nawasara\AuthPrimitives\Attributes\RequiresSudo;
 use Nawasara\AuthPrimitives\Traits\WithSudo;
 use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Services\CloudflareBlockService;
+use Nawasara\Secscan\Services\DecisionEngine;
 use Nawasara\Ui\Livewire\Concerns\HasExport;
 
 /**
@@ -63,6 +64,10 @@ class Index extends Component
 
         // Clear the flag on any incident that pointed at this block.
         $block->incident?->forceFill(['blocked_at' => null, 'block_id' => null])->save();
+
+        // Lift the host-level firewall rule too, otherwise the IP stays dropped
+        // at the origin with nothing in the UI explaining why.
+        app(DecisionEngine::class)->queueHostUnblock($block, auth()->id());
 
         $this->dispatch('toast', type: 'success', message: 'IP '.$block->ip.' di-unblock.');
     }
