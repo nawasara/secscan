@@ -180,6 +180,21 @@ return [
         'min_score'       => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
         'min_occurrences' => env('SECSCAN_AUTOBLOCK_MIN_OCCURRENCES', 3),
 
+        // --- High-confidence exemption from the occurrence gate ---
+        // An incident at or above this score only needs
+        // high_confidence_occurrences hits instead of min_occurrences.
+        //
+        // The repeat requirement is there to stop ambiguous signals (a stray
+        // 4xx, one odd request) from blocking real users. It should not hold
+        // back signals that are already unmistakable. Without this, an IP that
+        // probes once with a clear payload and moves on is never blocked: over
+        // 30 days in production that was 201 incidents from 190 unique IPs,
+        // 147 of which scored the maximum 100.
+        //
+        // Set to 0 to disable and return to a flat min_occurrences gate.
+        'high_confidence_score'       => env('SECSCAN_AUTOBLOCK_HIGH_SCORE', 90),
+        'high_confidence_occurrences' => env('SECSCAN_AUTOBLOCK_HIGH_OCCURRENCES', 1),
+
         // --- Whitelist (checked FIRST, fail-safe) ---
         // Cloudflare edge ranges — a safety net so a stray CF-attributed
         // incident can never blackhole Cloudflare (which would down every site).

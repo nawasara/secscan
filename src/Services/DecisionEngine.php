@@ -91,16 +91,43 @@ class DecisionEngine
         }
     }
 
-    /** All three conditions must hold. */
+    /**
+     * Type must be blockable and the score must clear min_score. The
+     * occurrence requirement then scales with how confident the score is.
+     *
+     * A flat min_occurrences of 3 let a large class of attacks through: an IP
+     * that probes once with an unmistakable payload and moves on never
+     * reaches three hits. Over 30 days in production that was 201 incidents
+     * across 190 unique IPs — and 147 of them scored 100, the maximum. The
+     * repeat requirement exists to keep *ambiguous* signals from blocking
+     * real users, so it should not apply to signals that are already
+     * unambiguous.
+     *
+     * Above high_confidence_score a single occurrence is enough; below it the
+     * original min_occurrences still applies. Set high_confidence_score to 0
+     * to disable the exemption and go back to a flat gate.
+     */
     protected function meetsThreshold(SecurityIncident $incident): bool
     {
-        $types   = (array) config('nawasara-secscan.autoblock.blockable_types', []);
+        $types    = (array) config('nawasara-secscan.autoblock.blockable_types', []);
         $minScore = (int) config('nawasara-secscan.autoblock.min_score', 70);
         $minOcc   = (int) config('nawasara-secscan.autoblock.min_occurrences', 3);
+        $highScore = (int) config('nawasara-secscan.autoblock.high_confidence_score', 90);
 
-        return in_array($incident->type, $types, true)
-            && (int) $incident->score >= $minScore
-            && (int) $incident->occurrences >= $minOcc;
+        if (! in_array($incident->type, $types, true)) {
+            return false;
+        }
+
+        $score = (int) $incident->score;
+        if ($score < $minScore) {
+            return false;
+        }
+
+        $required = ($highScore > 0 && $score >= $highScore)
+            ? (int) config('nawasara-secscan.autoblock.high_confidence_occurrences', 1)
+            : $minOcc;
+
+        return (int) $incident->occurrences >= $required;
     }
 
     protected function doBlock(SecurityIncident $incident, string $ip): array
