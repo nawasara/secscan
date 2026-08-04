@@ -19,7 +19,31 @@ use Nawasara\Sync\Jobs\AbstractSyncJob;
  */
 class ScanWordpressJob extends AbstractSyncJob
 {
-    public int $timeout = 300;
+    /**
+     * Satu putaran memindai SETIAP database WordPress yang dipantau — ratusan
+     * di produksi — jadi durasinya diukur dalam puluhan menit, bukan detik.
+     * Pengukuran di prod: ~1.930 detik (32 menit) untuk sekali jalan penuh.
+     *
+     * Nilai lama 300 detik membunuh scan di menit ke-5, mengembalikannya ke
+     * antrian, dan mengulangnya sampai `$tries` habis — muncul sebagai
+     * "attempted too many times" tanpa exception asli, karena memang tidak ada
+     * yang dilempar; job dihentikan paksa. Yang tercatat sukses pun menyesatkan:
+     * durasinya mencakup percobaan-percobaan yang gagal, bukan satu jalan bersih.
+     *
+     * 50 menit memberi ruang untuk pertumbuhan jumlah database sambil tetap
+     * selesai dalam satu jam, dan tetap di bawah --timeout=960 worker-sync…
+     * (lihat catatan di bawah).
+     */
+    public int $timeout = 3000;
+
+    /**
+     * Scan penuh tidak layak diulang otomatis. Kalau gagal, mengulang seluruh
+     * pemindaian ratusan database jarang memperbaiki keadaan — penyebabnya
+     * biasanya satu database yang tidak bisa dijangkau, dan percobaan ulang
+     * hanya menghabiskan slot worker selama setengah jam lagi. Scheduler akan
+     * menjalankannya lagi pada jam berikutnya.
+     */
+    public int $tries = 1;
 
     protected function service(): string
     {

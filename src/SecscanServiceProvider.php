@@ -40,6 +40,30 @@ class SecscanServiceProvider extends ServiceProvider
     }
 
     /**
+     * Apakah masih ada scan WordPress yang antre atau berjalan.
+     *
+     * Baris berstatus running yang lebih tua dari batas ini dianggap
+     * menggantung — worker yang mati di tengah jalan tidak sempat menandainya
+     * gagal, dan tanpa jendela ini satu baris yatim akan menghentikan
+     * penjadwalan selamanya.
+     */
+    protected function scanWordpressInFlight(int $staleAfterMinutes = 90): bool
+    {
+        try {
+            return \Nawasara\Sync\Models\SyncJob::query()
+                ->where('service', 'secscan')
+                ->where('action', 'scan_wordpress')
+                ->pending()
+                ->where('created_at', '>', now()->subMinutes($staleAfterMinutes))
+                ->exists();
+        } catch (\Throwable $e) {
+            // Tabel belum ada (migrasi awal) atau DB sedang bermasalah —
+            // jangan sampai itu menggagalkan boot scheduler.
+            return false;
+        }
+    }
+
+    /**
      * Register scope IP-block ke nawasara/api scope registry. Guard
      * `class_exists` supaya secscan tetap jalan kalau nawasara/api tidak
      * ter-install (API exposure opsional).
@@ -192,7 +216,18 @@ class SecscanServiceProvider extends ServiceProvider
             $interval = max(1, min(60, (int) config('nawasara-secscan.scan_interval', 60)));
             $schedule = $this->app->make(Schedule::class);
 
+            // Satu putaran scan memakan puluhan menit di produksi, sementara
+            // jadwalnya per jam — cukup dekat untuk bertumpuk. withoutOverlapping
+            // hanya menjaga *dispatcher*: begitu job masuk antrian, tugas
+            // scheduler selesai dan penjagaan itu tidak lagi berlaku. Jadi
+            // lewati dispatch kalau putaran sebelumnya masih di antrian atau
+            // masih berjalan, kalau tidak antrian scan akan menumpuk dan tiap
+            // putaran memindai ulang database yang sama.
             $schedule->call(function () {
+                if ($this->scanWordpressInFlight()) {
+                    return;
+                }
+
                 ScanWordpressJob::dispatch(triggerSource: 'scheduled');
             })
                 ->name('nawasara-secscan:scan-wordpress')
