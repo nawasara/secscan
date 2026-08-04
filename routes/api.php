@@ -1,7 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Nawasara\Secscan\Http\Api\AgentStatusController;
+use Nawasara\Secscan\Http\Api\FindingController;
+use Nawasara\Secscan\Http\Api\IncidentController;
 use Nawasara\Secscan\Http\Api\IpBlockController;
+use Nawasara\Secscan\Http\Api\StatsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,4 +42,36 @@ Route::middleware('scope:secscan.ipblock.write')->group(function () {
 // Delete: buka blokir.
 Route::middleware('scope:secscan.ipblock.delete')->group(function () {
     Route::delete('/ip-blocks/{ip}', [IpBlockController::class, 'destroy'])->name('ip-blocks.destroy');
+});
+
+/*
+| Endpoint baca lain — semuanya read-only. Aksi tulis untuk domain-domain ini
+| (triase temuan, perintah ke agent, hapus agent) sengaja TIDAK diekspos:
+| perintah agent adalah bidang kendali, dan triase perlu jejak audit "siapa
+| mengubah apa" yang hanya dicatat lewat UI.
+*/
+
+// Insiden: serangan yang dideteksi agent.
+Route::middleware('scope:secscan.incident.read')->group(function () {
+    Route::get('/incidents', [IncidentController::class, 'index'])->name('incidents.index');
+    Route::get('/incidents/{incidentId}', [IncidentController::class, 'show'])->name('incidents.show');
+});
+
+// Temuan situs: judol / deface / phishing di situs pemerintah.
+Route::middleware('scope:secscan.finding.read')->group(function () {
+    Route::get('/findings', [FindingController::class, 'index'])->name('findings.index');
+    Route::get('/findings/{id}', [FindingController::class, 'show'])
+        ->whereNumber('id')
+        ->name('findings.show');
+});
+
+// Status agent: untuk monitoring "agent mana yang berhenti melapor".
+Route::middleware('scope:secscan.agent.read')->group(function () {
+    Route::get('/agents', [AgentStatusController::class, 'index'])->name('agents.index');
+    Route::get('/agents/{agentId}', [AgentStatusController::class, 'show'])->name('agents.show');
+});
+
+// Statistik agregat, termasuk host yang paling sering jadi sasaran.
+Route::middleware('scope:secscan.stats.read')->group(function () {
+    Route::get('/stats', [StatsController::class, 'index'])->name('stats.index');
 });

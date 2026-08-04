@@ -70,6 +70,34 @@ class SecscanServiceProvider extends ServiceProvider
             'secscan.ipblock.delete',
             'Buka blokir IP (hapus rule di Cloudflare). Terpisah dari write supaya bisa kasih "boleh block, tidak boleh unblock".',
         );
+
+        // Scope baca lain — dipisah per domain supaya token bisa diberi akses
+        // sempit. Konsumen yang hanya butuh statistik tidak perlu ikut bisa
+        // membaca setiap insiden beserta IP penyerangnya.
+
+        $registry->register(
+            'secscan.incident.read',
+            'Insiden keamanan dari agent: tipe serangan, severity, IP penyerang, skor, klasifikasi MITRE, '
+            .'dan host yang jadi sasaran. Log mentah (evidence) dan metadata agent tidak termasuk. Read-only.',
+        );
+
+        $registry->register(
+            'secscan.finding.read',
+            'Temuan situs pemerintah: indikasi judi online, deface, phishing (URL, jenis ancaman, severity, status). '
+            .'Nama database dan bukti mentah — yang memuat daftar akun admin — tidak termasuk. Read-only.',
+        );
+
+        $registry->register(
+            'secscan.agent.read',
+            'Status agent: nama, online/offline, health score, terakhir terlihat. Untuk monitoring eksternal. '
+            .'Hostname, IP internal, versi agent, dan daftar plugin tidak termasuk (fingerprint attack surface). Read-only.',
+        );
+
+        $registry->register(
+            'secscan.stats.read',
+            'Statistik agregat insiden: jumlah per severity dan per tipe, top IP penyerang, host yang paling sering '
+            .'diserang, jumlah agent online. Tanpa detail per-insiden. Read-only.',
+        );
     }
 
     /**

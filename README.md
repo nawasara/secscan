@@ -48,6 +48,87 @@ Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 
 ---
 
+## API
+
+Butuh [`nawasara/api`](../nawasara-api). Kalau paket itu tidak terpasang, route tidak di-mount dan tidak ada yang berubah.
+
+Autentikasi: `Authorization: Bearer nws_…` atau `X-API-Key: nws_…`. Semua path berawalan `/api/v1/secscan`.
+
+Jangan tertukar dengan `/api/agent/*` — itu jalur agent melapor ke server, autentikasinya `X-Agent-Key`, dan tidak ada hubungannya dengan token maupun scope di bawah.
+
+### Scope
+
+| Scope | Akses |
+|---|---|
+| `secscan.incident.read` | Insiden dari agent |
+| `secscan.finding.read` | Temuan situs |
+| `secscan.agent.read` | Status agent |
+| `secscan.stats.read` | Statistik agregat |
+| `secscan.ipblock.read` | Daftar IP terblokir |
+| `secscan.ipblock.write` | Block IP baru |
+| `secscan.ipblock.delete` | Buka blokir |
+
+Dipisah per domain supaya token bisa diberi akses sempit — konsumen yang hanya butuh statistik tidak perlu ikut bisa membaca tiap insiden beserta IP penyerangnya. Atur di **Pengaturan → API Token**.
+
+### Endpoint
+
+| Method | Path | Query params |
+|---|---|---|
+| GET | `/incidents` | `severity`, `type`, `ip`, `blocked`, `since`, `per_page` |
+| GET | `/incidents/{incidentId}` | |
+| GET | `/findings` | `status` (default aktif; `all` untuk semua), `threat`, `severity`, `q`, `per_page` |
+| GET | `/findings/{id}` | |
+| GET | `/agents` | `status`, `per_page` |
+| GET | `/agents/{agentId}` | |
+| GET | `/stats` | `days` (1–90, default 1) atau `from`+`to` (ISO8601) |
+| GET/POST/DELETE | `/ip-blocks` | lihat bagian IP block |
+
+Parameter multi-nilai menerima koma: `?severity=high,critical`.
+
+```bash
+curl -H "Authorization: Bearer nws_xxx" \
+  "https://nawasara.ponorogo.go.id/api/v1/secscan/stats?days=7"
+```
+
+```json
+{
+  "data": {
+    "total": 1,
+    "by_severity": { "critical": 1 },
+    "by_type": { "sqli_attempt": 1 },
+    "top_ips": [{ "ip": "203.0.113.99", "count": 1, "score": 95 }],
+    "top_hosts": [{ "host": "dinaskesehatan.ponorogo.go.id", "count": 1 }],
+    "blocked": 0, "blocked_active": 0,
+    "agents_online": 1, "agents_total": 1
+  },
+  "meta": { "from": "…", "to": "…" }
+}
+```
+
+Angka di sini berasal dari `IncidentStatsCollector` yang sama dengan email digest harian, jadi keduanya tidak bisa berbeda diam-diam.
+
+### Yang tidak pernah dikembalikan
+
+Tiap Resource adalah allow-list, bukan dump yang disaring. Sengaja ditahan:
+
+- **`evidence` insiden** — baris log mentah. Satu request line utuh bisa memuat query string dengan token atau session id, username SSH yang dicoba, dan payload serangan apa adanya. Hanya field `host`-nya yang diambil, muncul sebagai `targets`.
+- **`metadata` insiden** — blob bebas dari agent, hanya divalidasi `nullable|array`. Isinya tidak terkendali.
+- **`evidence` temuan** — memuat `accounts.recent_admin_list` dan `non_gov_email_admins`: daftar akun admin WordPress beserta email. PII, sekaligus daftar sasaran phishing yang rapi.
+- **`db_name`** — nama schema database di server bersama.
+- **Detail agent**: `api_key_hash` (kredensial), `ip_local` (IP privat), `hostname`, `agent_version`, `os`, `web_server`, `plugins_active`. Satu per satu terlihat sepele; digabung menjadi "server X menjalankan nginx di Ubuntu 20.04", yaitu daftar belanja bagi penyerang yang mencari versi rentan.
+- **`AgentCommand` seluruhnya** — itu bidang kendali. Mengeksposnya, bahkan untuk dibaca, memberi tahu perintah jarak jauh apa yang bisa dijalankan di server OPD.
+- **`cf_rule_id` dan `notes` IP block** — handle Cloudflare dan jejak audit.
+
+Memperlebar daftar ini adalah keputusan sadar, bukan kemudahan: ubah Resource-nya, dan tulis alasannya di commit yang sama.
+
+### Batasi token berdasarkan IP
+
+`top_hosts` adalah daftar situs milik kita sendiri yang paling sering diserang. Berguna untuk memprioritaskan pertahanan — tapi kalau tokennya bocor, itu daftar sasaran siap pakai. Hal yang sama berlaku untuk `source_ip` pada insiden.
+
+Pasang **IP allow-list** pada setiap token yang membawa scope secscan, lewat halaman API Token.
+
+---
+
 # Panduan Install nawasara-agent
 
 Agen keamanan yang dipasang di **tiap server target**. Memantau log (nginx, SSH,

@@ -9,9 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Nawasara\Notification\Facades\Notify;
-use Nawasara\Secscan\Models\Agent;
-use Nawasara\Secscan\Models\IpBlock;
-use Nawasara\Secscan\Models\SecurityIncident;
+use Nawasara\Secscan\Services\IncidentStatsCollector;
 
 /**
  * Daily security digest: one e-mail summarising the last 24 hours — how many
@@ -148,74 +146,34 @@ class SendDailyDigestJob implements ShouldQueue
     }
 
     /**
-     * Gather the numbers for the window. Kept to a handful of grouped queries
-     * so this stays cheap even on a busy incident table.
+     * Gather the numbers for the window.
+     *
+     * Delegates to IncidentStatsCollector so the digest email and the public
+     * stats API can never drift apart. Keys are remapped to the camelCase shape
+     * the email template already expects, and topHosts back to a host => count
+     * map, so the template is untouched by this refactor.
      *
      * @return array<string, mixed>
      */
     protected function collect(\Carbon\Carbon $start, \Carbon\Carbon $end, string $tz): array
     {
-        $base = fn () => SecurityIncident::query()->whereBetween('last_seen_at', [$start, $end]);
+        $stats = app(IncidentStatsCollector::class)->collect($start, $end);
 
-        $total = $base()->count();
-
-        $bySeverity = $base()
-            ->selectRaw('severity, COUNT(*) as n')
-            ->groupBy('severity')
-            ->pluck('n', 'severity')
-            ->all();
-
-        $byType = $base()
-            ->selectRaw('type, COUNT(*) as n')
-            ->groupBy('type')
-            ->orderByDesc('n')
-            ->limit(8)
-            ->pluck('n', 'type')
-            ->all();
-
-        $topIps = $base()
-            ->whereNotNull('source_ip')
-            ->selectRaw('source_ip, COUNT(*) as n, MAX(score) as max_score')
-            ->groupBy('source_ip')
-            ->orderByDesc('n')
-            ->limit(10)
-            ->get()
-            ->map(fn ($r) => [
-                'ip' => $r->source_ip,
-                'count' => (int) $r->n,
-                'score' => (int) $r->max_score,
-            ])->all();
-
-        // Targeted hosts come from evidence JSON, so aggregate in PHP over the
-        // window's incidents that actually carry a host.
-        $hostCounts = [];
-        foreach ($base()->get(['evidence']) as $inc) {
-            foreach ((array) ($inc->evidence ?? []) as $ev) {
-                $h = $ev['host'] ?? null;
-                if ($h) {
-                    $hostCounts[$h] = ($hostCounts[$h] ?? 0) + 1;
-                }
-            }
+        $topHosts = [];
+        foreach ($stats['top_hosts'] as $row) {
+            $topHosts[$row['host']] = $row['count'];
         }
-        arsort($hostCounts);
-        $topHosts = array_slice($hostCounts, 0, 10, true);
-
-        $blocked = IpBlock::whereBetween('blocked_at', [$start, $end])->count();
-        $blockedActive = IpBlock::where('status', IpBlock::STATUS_ACTIVE)->count();
-
-        $agentsOnline = Agent::where('status', Agent::STATUS_ONLINE)->count();
-        $agentsTotal = Agent::count();
 
         return [
-            'total' => $total,
-            'bySeverity' => $bySeverity,
-            'byType' => $byType,
-            'topIps' => $topIps,
+            'total' => $stats['total'],
+            'bySeverity' => $stats['by_severity'],
+            'byType' => $stats['by_type'],
+            'topIps' => $stats['top_ips'],
             'topHosts' => $topHosts,
-            'blocked' => $blocked,
-            'blockedActive' => $blockedActive,
-            'agentsOnline' => $agentsOnline,
-            'agentsTotal' => $agentsTotal,
+            'blocked' => $stats['blocked'],
+            'blockedActive' => $stats['blocked_active'],
+            'agentsOnline' => $stats['agents_online'],
+            'agentsTotal' => $stats['agents_total'],
             'start' => $start->copy()->timezone($tz),
             'end' => $end->copy()->timezone($tz),
         ];
