@@ -236,15 +236,23 @@ class SiteHttpFetcher
 
     /**
      * Strip scripts/styles and collapse whitespace for cleaner detector input.
+     *
+     * Deliberately avoids strip_tags(): its parser is stateful, so a single
+     * unbalanced quote inside an attribute makes it discard the whole rest of
+     * the document. A real OPD page did exactly that and hid 187 spam keywords
+     * from the scanner. The regex below removes each tag independently, so one
+     * malformed tag costs one tag. See HtmlSignalDetector::extractText().
      */
     public function normalizeBody(string $html): string
     {
-        // Remove script and style blocks entirely
-        $clean = preg_replace('#<(script|style)[^>]*>.*?</\1>#is', ' ', $html) ?? $html;
-        // Strip remaining tags
-        $clean = strip_tags($clean);
+        // Remove script and style blocks entirely (including unterminated ones)
+        $clean = preg_replace('#<(script|style)\b[^>]*>.*?</\1\s*>#is', ' ', $html) ?? $html;
+        $clean = preg_replace('#<(script|style)\b.*$#is', ' ', $clean) ?? $clean;
+        // Strip remaining tags — stateless, unlike strip_tags()
+        $clean = preg_replace('/<[^>]*>/', ' ', $clean) ?? $clean;
+        $clean = html_entity_decode($clean, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         // Collapse whitespace
         $clean = preg_replace('/\s+/', ' ', $clean) ?? $clean;
-        return mb_convert_encoding(trim($clean), 'UTF-8', 'auto');
+        return trim($clean);
     }
 }

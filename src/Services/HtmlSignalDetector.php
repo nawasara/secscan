@@ -28,13 +28,18 @@ class HtmlSignalDetector
     {
         $findings = [];
 
-        $judol = $this->detectJudol($html, $url);
+        // Text extraction happens ONCE here and is passed down, so every
+        // detector sees the same body and a malformed page cannot blind one
+        // detector while sparing another.
+        $bodyText = $this->extractText($html);
+
+        $judol = $this->detectJudol($html, $url, $bodyText);
         if ($judol) $findings[] = $judol;
 
-        $pharma = $this->detectPharma($html, $url);
+        $pharma = $this->detectPharma($html, $url, $bodyText);
         if ($pharma) $findings[] = $pharma;
 
-        $defacement = $this->detectDefacement($html, $url, $hostname);
+        $defacement = $this->detectDefacement($html, $url, $hostname, $bodyText);
         if ($defacement) $findings[] = $defacement;
 
         $hidden = $this->detectHiddenInjection($html, $url);
@@ -50,7 +55,7 @@ class HtmlSignalDetector
     // 1. Judol — gambling keyword injection
     // -------------------------------------------------------------------------
 
-    private function detectJudol(string $html, string $url): ?array
+    private function detectJudol(string $html, string $url, string $bodyText): ?array
     {
         $score    = 0;
         $evidence = [];
@@ -89,7 +94,6 @@ class HtmlSignalDetector
         }
 
         // --- Body text scan (lower weight — can be anti-gambling article) ---
-        $bodyText = strip_tags($html);
         $bodyLower = mb_strtolower($bodyText);
         $bodyStrong = $this->matchKeywordsWithCount($bodyLower, $strong);
         if ($bodyStrong) {
@@ -126,7 +130,7 @@ class HtmlSignalDetector
      * on the same page — so a legitimate obstetric article that mentions
      * "misoprostol" for postpartum haemorrhage is not flagged.
      */
-    private function detectPharma(string $html, string $url): ?array
+    private function detectPharma(string $html, string $url, string $bodyText): ?array
     {
         $score    = 0;
         $evidence = [];
@@ -137,7 +141,6 @@ class HtmlSignalDetector
 
         $title    = $this->extractTitle($html);
         $meta     = $this->extractMeta($html, 'description');
-        $bodyText = strip_tags($html);
 
         // Sales-intent present anywhere on the page corroborates weak keywords.
         $pageLower  = mb_strtolower($title . ' ' . $meta . ' ' . $bodyText);
@@ -180,6 +183,22 @@ class HtmlSignalDetector
             if ($totalHits >= 2) {
                 $score += min(40, 10 + $totalHits * 3);
                 $evidence['body_strong_keyword_density'] = $bodyStrong;
+
+                // Mass injection stands on its own. A clean title keeps the
+                // title/meta branches at zero, so a page can carry dozens of
+                // "jual obat aborsi" blocks and still cap at 40 — recorded as a
+                // warning, below alert_min_score (70), and silently never
+                // alerted. That is exactly how the puskesmas site read while
+                // serving 57 such blocks. Volume this far past incidental
+                // mention is not ambiguous, so let it reach critical alone.
+                $distinct = count($bodyStrong);
+                if ($totalHits >= 20 && $distinct >= 3) {
+                    $score = max($score, 85);
+                    $evidence['mass_injection'] = [
+                        'total_hits'       => $totalHits,
+                        'distinct_keywords' => $distinct,
+                    ];
+                }
             }
         } elseif ($hasSales) {
             $bodyWeak = $this->matchKeywordsWithCount($bodyLower, $weak);
@@ -204,7 +223,7 @@ class HtmlSignalDetector
     // 2. Defacement — page takeover / redirect hijack
     // -------------------------------------------------------------------------
 
-    private function detectDefacement(string $html, string $url, string $hostname): ?array
+    private function detectDefacement(string $html, string $url, string $hostname, string $bodyText): ?array
     {
         $score    = 0;
         $evidence = [];
@@ -237,9 +256,8 @@ class HtmlSignalDetector
             '/greetz\s+to\s+\w+/i',
             '/\bShell\s+by\s+\w+/i',
         ];
-        $body = strip_tags($html);
         foreach ($bodyPatterns as $pattern) {
-            if (preg_match($pattern, $body, $m)) {
+            if (preg_match($pattern, $bodyText, $m)) {
                 $score += 70;
                 $evidence['deface_body_pattern'] = mb_substr($m[0], 0, 100);
                 break;
@@ -464,6 +482,49 @@ class HtmlSignalDetector
         }
 
         return false;
+    }
+
+    /**
+     * Extract visible text from HTML — WITHOUT strip_tags().
+     *
+     * strip_tags() runs a stateful parser: an unbalanced quote inside an
+     * attribute leaves it "inside a tag" and it silently discards the ENTIRE
+     * remainder of the document. That is not a hypothetical. A puskesmas site
+     * carried a stray quote in its search box:
+     *
+     *     <input type='text' placeholder='Search something..'' name='kata' />
+     *
+     * and strip_tags() reduced 79,676 bytes to 632 — dropping every one of the
+     * 187 "aborsi" occurrences injected below it. The page was fetched fine and
+     * scored clean for weeks, and illegal_pharma sat at zero findings fleet-wide
+     * because the detector was never handed any text to judge.
+     *
+     * A plain regex tag-strip has no such state: each <...> is removed on its
+     * own, so one broken tag costs one tag, not the rest of the page.
+     */
+    private function extractText(string $html): string
+    {
+        // Script/style contents are code, not visible copy — drop them whole so
+        // JS string literals can't be read as page text.
+        $text = preg_replace('#<(script|style)\b[^>]*>.*?</\1\s*>#is', ' ', $html) ?? $html;
+
+        // Unterminated script/style (truncated body, or another broken tag):
+        // cut from the opening tag to the end rather than leaving raw JS in.
+        $text = preg_replace('#<(script|style)\b.*$#is', ' ', $text) ?? $text;
+
+        // Comments — injected spam is sometimes parked in them, but so is
+        // boilerplate; drop them to stay consistent with "visible text".
+        $text = preg_replace('/<!--.*?-->/s', ' ', $text) ?? $text;
+
+        // Stateless tag removal.
+        $text = preg_replace('/<[^>]*>/', ' ', $text) ?? $text;
+
+        // Entities to their characters, so &nbsp; and &#111; don't split words.
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
+        return trim($text);
     }
 
     private function extractTitle(string $html): string
