@@ -136,6 +136,7 @@ class ScanWordpressJob extends AbstractSyncJob
         return [
             'scanned' => $result['scanned_total'],
             'wordpress' => $result['wordpress_total'],
+            'cms' => $result['cms_total'] ?? 0,
             'findings' => count($result['findings']),
             'created' => $created,
             'updated' => $updated,

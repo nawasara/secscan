@@ -32,9 +32,19 @@ class SqlSignalDetector
     {
         $conn = $this->connection->connection();
         $inspector = new WpInspector($conn);
+        $cmsInspector = new GenericCmsInspector($conn);
+
+        // One pathological table must not hang the hourly sweep. Bound every
+        // statement server-side; a timed-out query is caught per-schema below.
+        try {
+            $conn->statement('SET SESSION max_execution_time = 15000');
+        } catch (\Throwable) {
+            // Not fatal — older MySQL/MariaDB may not support the variable.
+        }
 
         $databases = $inspector->databases();
         $wpCount = 0;
+        $cmsCount = 0;
         $errors = 0;
         $findings = [];
 
@@ -47,6 +57,22 @@ class SqlSignalDetector
                 try {
                     $prefix = $inspector->wordpressPrefix($db);
                     if ($prefix === null) {
+                        // Not WordPress — but that is not the same as "not a
+                        // website". Most OPD sites here run bespoke PHP CMSes,
+                        // and skipping them outright is how puskesmaspudak
+                        // served 1,784 rows of pharma spam unnoticed. Fall back
+                        // to a structure-agnostic content sweep.
+                        $cms = $this->scanGenericCms($cmsInspector, $db);
+                        if ($cms !== null) {
+                            $cmsCount++;
+                            foreach ($cms['findings'] as $f) {
+                                $findings[] = array_merge([
+                                    'db_name' => $db,
+                                    'site_url' => $cms['site_url'],
+                                    'site_name' => $cms['site_name'],
+                                ], $f);
+                            }
+                        }
                         continue;
                     }
                     $wpCount++;
@@ -73,9 +99,96 @@ class SqlSignalDetector
         return [
             'scanned_total' => count($databases),
             'wordpress_total' => $wpCount,
+            'cms_total' => $cmsCount,
             'errors' => $errors,
             'findings' => $findings,
         ];
+    }
+
+    /**
+     * Content sweep for a non-WordPress schema.
+     *
+     * Deliberately narrower than the WordPress path: it only reports keyword
+     * injection, because that is all it can establish without knowing the
+     * schema. There is no options table to read siteurl from, no post_status
+     * to tell published from draft, and no way to tell a CMS apart from an
+     * internal app — so a schema with no content columns simply returns null.
+     *
+     * Only STRONG keywords count here. The weak tiers ("slot", "aborsi",
+     * "misoprostol") rely on WordPress corroboration signals that do not exist
+     * in this path, and these columns include free-text bodies where an
+     * ordinary health article would trip them. Strong terms — "jual obat
+     * aborsi", "gacor" — do not appear in legitimate government content.
+     *
+     * @return array{site_url:?string, site_name:?string, findings:list<array>}|null
+     */
+    protected function scanGenericCms(GenericCmsInspector $inspector, string $db): ?array
+    {
+        $columns = $inspector->contentColumns($db);
+        if (empty($columns)) {
+            return null;   // no content-shaped columns — an app DB, not a site
+        }
+
+        $findings = [];
+
+        $checks = [
+            'judol' => (array) config('nawasara-secscan.judol_keywords_strong', []),
+            'illegal_pharma' => (array) config('nawasara-secscan.pharma_keywords_strong', []),
+        ];
+
+        foreach ($checks as $threatType => $keywords) {
+            $hit = $inspector->matchedContent($db, $keywords);
+            if ($hit['count'] <= 0) {
+                continue;
+            }
+
+            $findings[] = [
+                'threat_type' => $threatType,
+                'score' => $this->cmsScore($hit['count'], count($hit['columns'])),
+                'severity' => '',   // filled in by severityFrom() below
+                'evidence' => [
+                    'source' => 'sql-cms',
+                    'note' => 'Non-WordPress CMS — content columns matched by name.',
+                    'matched_rows' => $hit['count'],
+                    'matched_columns' => $hit['columns'],
+                    'samples' => $hit['samples'],
+                ],
+            ];
+        }
+
+        // Severity mirrors the HTTP/WP paths so one threshold governs all three.
+        $critical = (int) config('nawasara-secscan.thresholds.critical', 70);
+        $warning = (int) config('nawasara-secscan.thresholds.warning', 40);
+        foreach ($findings as &$f) {
+            $f['severity'] = $f['score'] >= $critical ? 'critical'
+                : ($f['score'] >= $warning ? 'warning' : 'info');
+        }
+
+        return [
+            'site_url' => null,     // no reliable way to read the site URL here
+            'site_name' => $db,
+            'findings' => $findings,
+        ];
+    }
+
+    /**
+     * Score a generic-CMS content hit.
+     *
+     * Strong keywords carry the confidence, so even one match is meaningful —
+     * but a single row could be a news article quoting a spam headline, so it
+     * starts as a warning and only mass injection reaches critical. Spread
+     * across several columns means the CMS was written to broadly (title, body
+     * and slug all rewritten), which is injection rather than editorial.
+     */
+    protected function cmsScore(int $rows, int $columnCount): int
+    {
+        $score = 45 + min(30, $rows * 3);
+
+        if ($rows >= 20 && $columnCount >= 3) {
+            $score = max($score, 85);
+        }
+
+        return min(100, $score);
     }
 
     /**
