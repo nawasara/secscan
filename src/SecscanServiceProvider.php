@@ -192,7 +192,19 @@ class SecscanServiceProvider extends ServiceProvider
             'key' => 'secscan.ip.autoblocked',
             'severity' => 'warning',
             'category' => 'security',
-            'cooldown_minutes' => 0, // each block is a distinct action worth notifying
+            // Tiap blokir adalah kejadian tersendiri yang layak SEKALI
+            // pemberitahuan — bukan sesuatu yang perlu diingatkan berulang.
+            //
+            // ⚠️ JANGAN kembalikan ke 0. Dengan 0, EscalateStaleAlertsJob
+            // menganggap masa tenangnya selalu habis, sehingga tiap blokir
+            // diberitakan ulang sampai batas max_renotify (5). Di produksi itu
+            // membuat 405 blokir menjadi 2.014 surel — 1.609 di antaranya
+            // pengulangan yang tidak menambah keterangan apa pun.
+            //
+            // Blokir tidak "memburuk" seiring waktu: begitu IP-nya terkunci,
+            // mengingatkan operator empat kali lagi tidak mengubah apa pun,
+            // dan justru menenggelamkan peringatan yang benar-benar baru.
+            'cooldown_minutes' => 10080, // 7 hari — praktis sekali kirim saja
             'description' => 'IP penyerang otomatis di-block di Cloudflare edge oleh Decision Engine',
             'subject_template' => '[auto-block] IP {context.ip} di-block ({context.reason}, skor {context.score})',
         ]));

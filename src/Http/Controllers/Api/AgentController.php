@@ -82,7 +82,20 @@ class AgentController extends Controller
         $touchedIds = []; // incidents to run through the Decision Engine
 
         foreach ($data['incidents'] as $inc) {
-            $detectedAt = \Carbon\Carbon::parse($inc['detected_at']);
+            // ->utc() WAJIB, dan bukan sekadar kerapian.
+            //
+            // Agen mengirim RFC3339 beserta offsetnya (mis. +07:00). Carbon
+            // memarsingnya dengan BENAR, tetapi objeknya tetap membawa zona
+            // +07:00 — dan Eloquent menuliskan JAM DINDINGNYA apa adanya ke
+            // kolom datetime, tanpa menormalkan ke UTC. Jadi 04:40 WIB
+            // tersimpan sebagai 04:40 UTC: tujuh jam di MASA DEPAN.
+            //
+            // Akibatnya IP yang baru saja diblokir tampak masih menyerang
+            // tujuh jam kemudian, dan insiden pemicu sebuah blokir tercatat
+            // SESUDAH blokir yang disebabkannya. Bukan serangan, melainkan
+            // pembacaan jam yang salah — tetapi tidak ada yang terlihat rusak,
+            // sehingga dugaan pertama selalu tertuju pada Cloudflare.
+            $detectedAt = \Carbon\Carbon::parse($inc['detected_at'])->utc();
             $sourceIp   = $inc['source_ip'] ?: null;
 
             // Exact re-send: deterministic scanner IDs or retried buffered batches.
@@ -131,12 +144,8 @@ class AgentController extends Controller
                 'mitre_technique' => $inc['mitre_technique'] ?? null,
                 'evidence'        => $inc['evidence'],
                 'metadata'        => $inc['metadata'] ?? null,
-                // Store the PARSED Carbon, not the raw string. The agent sends
-                // RFC3339 with an offset (e.g. +07:00); assigning the raw string
-                // to a datetime column keeps the wall-clock time as-is instead of
-                // normalising to app UTC, so detected_at ended up 7h ahead of the
-                // Laravel-set created_at — making a blocked IP look like it kept
-                // attacking hours later. $detectedAt (line above) is already UTC.
+                // $detectedAt sudah dinormalkan ke UTC di atas — lihat
+                // alasannya di sana sebelum menyederhanakannya kembali.
                 'detected_at'     => $detectedAt,
                 'last_seen_at'    => $detectedAt,
             ]);
