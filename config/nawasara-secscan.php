@@ -118,14 +118,14 @@ return [
     | Rate-limiting protects OPD sites from being overloaded by the scanner.
     */
     'http_probe' => [
-        'enabled'             => env('SECSCAN_HTTP_PROBE_ENABLED', true),
-        'scan_interval'       => env('SECSCAN_HTTP_SCAN_INTERVAL', 360),  // minutes; default 6 hours
-        'timeout_seconds'     => env('SECSCAN_HTTP_TIMEOUT', 12),
-        'delay_ms_per_host'   => env('SECSCAN_HTTP_DELAY_MS', 800),     // delay between requests to same host
+        'enabled' => env('SECSCAN_HTTP_PROBE_ENABLED', true),
+        'scan_interval' => env('SECSCAN_HTTP_SCAN_INTERVAL', 360),  // minutes; default 6 hours
+        'timeout_seconds' => env('SECSCAN_HTTP_TIMEOUT', 12),
+        'delay_ms_per_host' => env('SECSCAN_HTTP_DELAY_MS', 800),     // delay between requests to same host
         'daily_quota_per_host' => env('SECSCAN_HTTP_DAILY_QUOTA', 100), // max fetches per host per day
         'backoff_after_failures' => 3,
-        'backoff_minutes'     => 30,
-        'max_body_kb'         => 2048,
+        'backoff_minutes' => 30,
+        'max_body_kb' => 2048,
         // WP-specific paths probed in addition to homepage
         'wp_paths' => [
             '/wp-login.php',
@@ -177,7 +177,7 @@ return [
             .'vulnerability_scan,file_scan_webshell,file_scan_backdoor,file_scan_exploit,'
             .'brute_force,ssh_root_login,xss,4xx_storm,scanner_bot,request_flood'
         ))),
-        'min_score'       => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
+        'min_score' => env('SECSCAN_AUTOBLOCK_MIN_SCORE', 70),
         'min_occurrences' => env('SECSCAN_AUTOBLOCK_MIN_OCCURRENCES', 3),
 
         // --- High-confidence exemption from the occurrence gate ---
@@ -192,7 +192,7 @@ return [
         // 147 of which scored the maximum 100.
         //
         // Set to 0 to disable and return to a flat min_occurrences gate.
-        'high_confidence_score'       => env('SECSCAN_AUTOBLOCK_HIGH_SCORE', 90),
+        'high_confidence_score' => env('SECSCAN_AUTOBLOCK_HIGH_SCORE', 90),
         'high_confidence_occurrences' => env('SECSCAN_AUTOBLOCK_HIGH_OCCURRENCES', 1),
 
         // --- Host-level block (second layer, alongside Cloudflare) ---
@@ -210,7 +210,7 @@ return [
         // allowed_actions. Commands are created PENDING and the agent only
         // fetches APPROVED ones, so an admin confirms each firewall change
         // until host_block_auto_approve is turned on.
-        'host_block'              => env('SECSCAN_AUTOBLOCK_HOST', false),
+        'host_block' => env('SECSCAN_AUTOBLOCK_HOST', false),
         'host_block_auto_approve' => env('SECSCAN_AUTOBLOCK_HOST_AUTO_APPROVE', false),
 
         // --- Whitelist (checked FIRST, fail-safe) ---
@@ -312,5 +312,31 @@ return [
         'timezone' => env('SECSCAN_DIGEST_TIMEZONE', 'Asia/Jakarta'),
         'recipients' => array_filter(array_map('trim', explode(',', (string) env('SECSCAN_DIGEST_RECIPIENTS', '')))),
         'send_when_empty' => env('SECSCAN_DIGEST_SEND_WHEN_EMPTY', true),
+
+        /*
+        |----------------------------------------------------------------------
+        | Kanal yang menuju SATU TEMPAT bersama, mis. Telegram
+        |----------------------------------------------------------------------
+        |
+        | Berbeda dari `recipients` di atas yang berisi alamat surel per ORANG.
+        | Kanal di sini mengirim ke satu grup, jadi tujuannya diambil dari
+        | Vault (`chat_id`), bukan dari daftar penerima.
+        |
+        | Ringkasannya disusun ulang dari data — bukan badan surel yang dibuang
+        | tag-nya, karena yang tersisa dari tabel HTML hanyalah baris kosong
+        | berlapis dengan angka tercecer di antaranya.
+        |
+        | Surel TETAP dikirim. Ini menambah tempat sampai, bukan menggantikan.
+        |
+        */
+        'group_channels' => array_filter(array_map('trim', explode(',', (string) env(
+            'SECSCAN_DIGEST_GROUP_CHANNELS',
+            'telegram',
+        )))),
+
+        // Kosongkan untuk memakai chat_id dari Vault (yang biasa dipakai).
+        'group_recipients' => [
+            'telegram' => env('SECSCAN_DIGEST_TELEGRAM_CHAT_ID'),
+        ],
     ],
 ];
