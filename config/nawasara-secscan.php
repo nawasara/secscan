@@ -305,6 +305,26 @@ return [
         'cache_days' => env('SECSCAN_GEOIP_CACHE_DAYS', 30),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Kesehatan agen
+    |--------------------------------------------------------------------------
+    |
+    | Agen menandai dirinya `offline` setelah 3 menit tanpa detak — tetapi
+    | sampai 4 September 2026 tidak ada yang MEMBERITAKANNYA. Akibatnya `sadap`
+    | diam 45 hari dan `ponorogo` 21 jam tanpa seorang pun tahu, sementara 168
+    | perintah blokir menumpuk tak terkirim.
+    |
+    | Ambang di sini SENGAJA jauh lebih longgar daripada 3 menit itu: menandai
+    | offline itu murah dan boleh sensitif, sedangkan memberitakannya harus
+    | tahan terhadap mulai ulang dan jaringan yang tersendat. Detaknya tiap 60
+    | detik, jadi 30 menit adalah kelonggaran tiga puluh kali lipat.
+    |
+    */
+    'agent_health' => [
+        'offline_minutes' => (int) env('SECSCAN_AGENT_OFFLINE_MINUTES', 30),
+    ],
+
     'digest' => [
         'enabled' => env('SECSCAN_DIGEST_ENABLED', true),
         'at' => env('SECSCAN_DIGEST_AT', '07:00'),

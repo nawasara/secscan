@@ -10,6 +10,7 @@ use Livewire\Livewire;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Alerting\Models\AlertRule;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
+use Nawasara\Secscan\Jobs\CheckAgentHealthJob;
 use Nawasara\Secscan\Jobs\ScanHttpJob;
 use Nawasara\Secscan\Jobs\ScanWordpressJob;
 use Nawasara\Secscan\Jobs\SendDailyDigestJob;
@@ -255,6 +256,18 @@ class SecscanServiceProvider extends ServiceProvider
                 ->name('nawasara-secscan:check-agent-status')
                 ->everyMinute()
                 ->withoutOverlapping(2);
+
+            // Memberitakan agen yang berhenti melapor.
+            //
+            // Terpisah dari penandaan di atas dan JAUH lebih jarang: menandai
+            // offline itu murah dan boleh sensitif (3 menit), memberitakannya
+            // harus tahan mulai ulang (30 menit). Menyatukannya berarti satu
+            // dari keduanya salah — entah statusnya lambat, atau kotak masuk
+            // penuh tiap kali ada agen yang di-restart.
+            $schedule->call(fn () => CheckAgentHealthJob::dispatch())
+                ->name('nawasara-secscan:check-agent-health')
+                ->everyThirtyMinutes()
+                ->withoutOverlapping(10);
 
             // Daily security digest — one recap e-mail each morning. Enabled flag
             // and send time are UI-managed (nawasara_settings) with the config/env
