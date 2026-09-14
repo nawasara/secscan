@@ -1,16 +1,16 @@
 # nawasara/secscan
 
-Security threat detection & response for the Nawasara superapp. Two independent
-sources of signal feed one dashboard:
+Security threat detection and response for the Nawasara superapp. Two
+independent sources of signal feed one dashboard:
 
-1. **Database scanner** — reads the MySQL databases already monitored by
+1. **Database scanner.** Reads the MySQL databases already monitored by
    `nawasara/database-monitor` (read-only) for indicators of compromise on
    hosted sites (WordPress in particular).
-2. **Host agents** (`nawasara-agent`) — a Go binary installed on each server
-   that tails logs, watches SSH, and scans the filesystem for webshells /
-   backdoors, reporting incidents + findings back to the dashboard.
+2. **Host agents** (`nawasara-agent`). A Go binary installed on each server that
+   tails logs, watches SSH, and scans the filesystem for webshells and
+   backdoors, reporting incidents and findings back to the dashboard.
 
-Everything is **detect + alert** — the database scanner never writes to OPD
+Everything is **detect plus alert**: the database scanner never writes to OPD
 databases. Findings get a confidence score (0-100) and severity, a triage
 workflow (open / acknowledged / false-positive / resolved), a dashboard, and
 alerts via `nawasara/alerting`.
@@ -19,13 +19,13 @@ alerts via `nawasara/alerting`.
 
 ## Dashboard pages
 
-| Page | Route | Isi |
+| Page | Route | Contents |
 |---|---|---|
-| Dashboard | `/nawasara-secscan/dashboard` | Ringkasan: agent online, incident kritis, temuan mendesak |
-| Temuan Website | `/nawasara-secscan/findings` | Temuan dari database scanner (judol/malware/defacement) + triage |
-| Incidents | `/nawasara-secscan/incidents` | Insiden dari agent (SSH brute-force, exploit chain, scanner bot) |
-| Agents | `/nawasara-secscan/agents` | Daftar agent terpasang + detail (scan findings, command queue) |
-| IP Timeline | `/nawasara-secscan/ip/{ip}` | Semua insiden dari satu IP sumber |
+| Dashboard | `/nawasara-secscan/dashboard` | Summary: agents online, critical incidents, urgent findings |
+| Temuan Website | `/nawasara-secscan/findings` | Findings from the database scanner (gambling spam/malware/defacement) plus triage |
+| Incidents | `/nawasara-secscan/incidents` | Incidents from the agent (SSH brute-force, exploit chain, scanner bot) |
+| Agents | `/nawasara-secscan/agents` | List of installed agents plus detail (scan findings, command queue) |
+| IP Timeline | `/nawasara-secscan/ip/{ip}` | Every incident from one source IP |
 
 Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 `secscan.agent.scan`, `secscan.agent.command`.
@@ -34,14 +34,14 @@ Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 
 ## Setup (database scanner)
 
-1. `nawasara/database-monitor` harus dikonfigurasi (Vault group `database-monitor`)
-   — secscan pakai ulang koneksi read-only-nya.
-2. Seed permission:
+1. `nawasara/database-monitor` must be configured (Vault group
+   `database-monitor`); secscan reuses its read-only connection.
+2. Seed permissions:
    ```bash
    php artisan db:seed --class="Nawasara\Secscan\Database\Seeders\PermissionSeeder"
    ```
-3. Scan berjalan otomatis (scheduler). Trigger manual dari tombol "Pindai sekarang"
-   di dashboard, atau:
+3. The scan runs automatically (scheduler). Trigger it manually from the "Pindai
+   sekarang" button on the dashboard, or:
    ```php
    \Nawasara\Secscan\Jobs\ScanWordpressJob::dispatch(triggerSource: 'manual');
    ```
@@ -50,40 +50,40 @@ Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 
 ## API
 
-Butuh [`nawasara/api`](../nawasara-api). Kalau paket itu tidak terpasang, route tidak di-mount dan tidak ada yang berubah.
+Requires [`nawasara/api`](../nawasara-api). If that package is not installed, the routes are not mounted and nothing changes.
 
-Autentikasi: `Authorization: Bearer nws_…` atau `X-API-Key: nws_…`. Semua path berawalan `/api/v1/secscan`.
+Authentication: `Authorization: Bearer nws_…` or `X-API-Key: nws_…`. Every path is prefixed with `/api/v1/secscan`.
 
-Jangan tertukar dengan `/api/agent/*` — itu jalur agent melapor ke server, autentikasinya `X-Agent-Key`, dan tidak ada hubungannya dengan token maupun scope di bawah.
+Do not confuse this with `/api/agent/*`, which is the path agents use to report to the server; it authenticates with `X-Agent-Key` and has nothing to do with the tokens or scopes below.
 
 ### Scope
 
-| Scope | Akses |
+| Scope | Access |
 |---|---|
-| `secscan.incident.read` | Insiden dari agent |
-| `secscan.finding.read` | Temuan situs |
-| `secscan.agent.read` | Status agent |
-| `secscan.stats.read` | Statistik agregat |
-| `secscan.ipblock.read` | Daftar IP terblokir |
-| `secscan.ipblock.write` | Block IP baru |
-| `secscan.ipblock.delete` | Buka blokir |
+| `secscan.incident.read` | Incidents from the agent |
+| `secscan.finding.read` | Website findings |
+| `secscan.agent.read` | Agent status |
+| `secscan.stats.read` | Aggregate statistics |
+| `secscan.ipblock.read` | List of blocked IPs |
+| `secscan.ipblock.write` | Block a new IP |
+| `secscan.ipblock.delete` | Unblock |
 
-Dipisah per domain supaya token bisa diberi akses sempit — konsumen yang hanya butuh statistik tidak perlu ikut bisa membaca tiap insiden beserta IP penyerangnya. Atur di **Pengaturan → API Token**.
+Split per domain so a token can be given narrow access: a consumer that only needs statistics does not also need to read every incident and its attacker IP. Configure this in **Pengaturan → API Token**.
 
-### Endpoint
+### Endpoints
 
 | Method | Path | Query params |
 |---|---|---|
 | GET | `/incidents` | `severity`, `type`, `ip`, `blocked`, `since`, `per_page` |
 | GET | `/incidents/{incidentId}` | |
-| GET | `/findings` | `status` (default aktif; `all` untuk semua), `threat`, `severity`, `q`, `per_page` |
+| GET | `/findings` | `status` (default active; `all` for everything), `threat`, `severity`, `q`, `per_page` |
 | GET | `/findings/{id}` | |
 | GET | `/agents` | `status`, `per_page` |
 | GET | `/agents/{agentId}` | |
-| GET | `/stats` | `days` (1–90, default 1) atau `from`+`to` (ISO8601) |
-| GET/POST/DELETE | `/ip-blocks` | lihat bagian IP block |
+| GET | `/stats` | `days` (1-90, default 1) or `from`+`to` (ISO8601) |
+| GET/POST/DELETE | `/ip-blocks` | see the IP block section |
 
-Parameter multi-nilai menerima koma: `?severity=high,critical`.
+Multi-value parameters accept commas: `?severity=high,critical`.
 
 ```bash
 curl -H "Authorization: Bearer nws_xxx" \
@@ -105,103 +105,103 @@ curl -H "Authorization: Bearer nws_xxx" \
 }
 ```
 
-Angka di sini berasal dari `IncidentStatsCollector` yang sama dengan email digest harian, jadi keduanya tidak bisa berbeda diam-diam.
+These numbers come from the same `IncidentStatsCollector` as the daily email digest, so the two cannot silently diverge.
 
-### Yang tidak pernah dikembalikan
+### What is never returned
 
-Tiap Resource adalah allow-list, bukan dump yang disaring. Sengaja ditahan:
+Each Resource is an allow-list, not a filtered dump. Deliberately withheld:
 
-- **`evidence` insiden** — baris log mentah. Satu request line utuh bisa memuat query string dengan token atau session id, username SSH yang dicoba, dan payload serangan apa adanya. Hanya field `host`-nya yang diambil, muncul sebagai `targets`.
-- **`metadata` insiden** — blob bebas dari agent, hanya divalidasi `nullable|array`. Isinya tidak terkendali.
-- **`evidence` temuan** — memuat `accounts.recent_admin_list` dan `non_gov_email_admins`: daftar akun admin WordPress beserta email. PII, sekaligus daftar sasaran phishing yang rapi.
-- **`db_name`** — nama schema database di server bersama.
-- **Detail agent**: `api_key_hash` (kredensial), `ip_local` (IP privat), `hostname`, `agent_version`, `os`, `web_server`, `plugins_active`. Satu per satu terlihat sepele; digabung menjadi "server X menjalankan nginx di Ubuntu 20.04", yaitu daftar belanja bagi penyerang yang mencari versi rentan.
-- **`AgentCommand` seluruhnya** — itu bidang kendali. Mengeksposnya, bahkan untuk dibaca, memberi tahu perintah jarak jauh apa yang bisa dijalankan di server OPD.
-- **`cf_rule_id` dan `notes` IP block** — handle Cloudflare dan jejak audit.
+- **Incident `evidence`**: raw log lines. A single full request line can contain a query string with a token or session id, an attempted SSH username, and the attack payload verbatim. Only its `host` field is taken, and it appears as `targets`.
+- **Incident `metadata`**: a free-form blob from the agent, validated only as `nullable|array`. Its contents are not controlled.
+- **Finding `evidence`**: contains `accounts.recent_admin_list` and `non_gov_email_admins`, a list of WordPress admin accounts with their emails. That is PII, and also a neat list of phishing targets.
+- **`db_name`**: the database schema name on a shared server.
+- **Agent detail**: `api_key_hash` (a credential), `ip_local` (a private IP), `hostname`, `agent_version`, `os`, `web_server`, `plugins_active`. Each one looks trivial on its own; together they read as "server X runs nginx on Ubuntu 20.04", a shopping list for an attacker looking for vulnerable versions.
+- **`AgentCommand` in full**: this is the control plane. Exposing it, even read-only, reveals what remote commands can be run on an OPD server.
+- **`cf_rule_id` and `notes` on IP blocks**: the Cloudflare handle and the audit trail.
 
-Memperlebar daftar ini adalah keputusan sadar, bukan kemudahan: ubah Resource-nya, dan tulis alasannya di commit yang sama.
+Widening this list is a deliberate decision, not a convenience: change the Resource, and write down why in the same commit.
 
-### Batasi token berdasarkan IP
+### Restrict tokens by IP
 
-`top_hosts` adalah daftar situs milik kita sendiri yang paling sering diserang. Berguna untuk memprioritaskan pertahanan — tapi kalau tokennya bocor, itu daftar sasaran siap pakai. Hal yang sama berlaku untuk `source_ip` pada insiden.
+`top_hosts` is a list of our own sites that are attacked most often. Useful for prioritizing defense, but if the token leaks it is a ready-made target list. The same goes for `source_ip` on incidents.
 
-Pasang **IP allow-list** pada setiap token yang membawa scope secscan, lewat halaman API Token.
+Put an **IP allow-list** on every token that carries a secscan scope, through the API Token page.
 
 ---
 
-# Panduan Install nawasara-agent
+# nawasara-agent install guide
 
-Agen keamanan yang dipasang di **tiap server target**. Memantau log (nginx, SSH,
-Laravel), mendeteksi serangan (brute-force, exploit, scanner bot), dan
-memindai file berbahaya (webshell/backdoor), lalu melaporkan ke dashboard.
+The security agent installed on **every target server**. It monitors logs
+(nginx, SSH, Laravel), detects attacks (brute-force, exploit, scanner bot), and
+scans for malicious files (webshell/backdoor), then reports to the dashboard.
 
-**Butuh:** akses root/sudo · Linux (amd64/arm64) · ± 3 menit
+**Needs:** root/sudo access, Linux (amd64/arm64), about 3 minutes.
 
-## Cara cepat — satu baris (direkomendasikan)
+## Quick way: one line (recommended)
 
-Jalankan di server target sebagai root:
+Run this on the target server as root:
 
 ```bash
 curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
 ```
 
-Skrip ini otomatis:
-1. Unduh binary sesuai arsitektur (amd64/arm64)
-2. **Daftar ke dashboard** → dapat `agent_id` + `api_key` otomatis
-3. Tulis config (`/etc/nawasara-agent/config.yaml`, `chmod 600`)
-4. Pasang service systemd (`nawasara-agent run --config …`)
-5. Jalankan service
+The script automatically:
+1. Downloads the binary for the architecture (amd64/arm64)
+2. **Registers with the dashboard**, receiving `agent_id` plus `api_key` automatically
+3. Writes the config (`/etc/nawasara-agent/config.yaml`, `chmod 600`)
+4. Installs the systemd service (`nawasara-agent run --config …`)
+5. Starts the service
 
-Tidak perlu langkah manual. Output sukses:
+No manual step is needed. Successful output:
 
 ```
 ==> Registering agent with dashboard...
-    Registered — agent_id: RmKhmpjHXaAoPXYOL4vx…
+    Registered - agent_id: RmKhmpjHXaAoPXYOL4vx…
 ==> Installation complete! Agent registered + running.
     config : /etc/nawasara-agent/config.yaml
     logs   : tail -f /var/log/nawasara-agent/agent.log
 ```
 
-> **Sudah pernah pasang?** Jika `/etc/nawasara-agent/config.yaml` sudah ada,
-> skrip melewati pendaftaran (kredensial lama dipertahankan). Untuk daftar ulang
-> dari awal, hapus config dulu:
+> **Installed before?** If `/etc/nawasara-agent/config.yaml` already exists, the
+> script skips registration (the old credentials are kept). To register again
+> from scratch, remove the config first:
 > ```bash
 > rm -f /etc/nawasara-agent/config.yaml
 > curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
 > ```
 
-## Verifikasi
+## Verification
 
 ```bash
-# 1. Status service — harus "active (running)"
+# 1. Service status: should be "active (running)"
 systemctl status nawasara-agent
 
-# 2. Pantau log — cari heartbeat, jangan ada "HTTP 403" berulang
+# 2. Watch the log: look for heartbeats, no repeated "HTTP 403"
 tail -f /var/log/nawasara-agent/agent.log
 ```
 
-Lalu buka **Dashboard → Security Scan → Agents**. Server muncul **online** dalam
-± 30 detik (interval heartbeat).
+Then open **Dashboard → Security Scan → Agents**. The server appears **online**
+within about 30 seconds (the heartbeat interval).
 
-## Konfigurasi
+## Configuration
 
-Config ditulis otomatis ke `/etc/nawasara-agent/config.yaml`. Sentuh hanya untuk
-menyesuaikan path log atau menyalakan pemindai file.
+The config is written automatically to `/etc/nawasara-agent/config.yaml`. Touch
+it only to adjust log paths or turn on the file scanner.
 
-| Field | Arti |
+| Field | Meaning |
 |---|---|
-| `dashboard_url` | Alamat dashboard Nawasara (terisi otomatis) |
-| `agent_id` | ID unik agen (dapat otomatis saat pendaftaran) |
-| `api_key` | Kunci auth (`nwa_…`, dapat otomatis, disimpan `chmod 600`) |
-| `heartbeat_interval` | Interval heartbeat (default `30s`) |
-| `plugins.enabled` | Kolektor aktif: `nginx`, `ssh`, `laravel` |
-| `plugins.laravel.log_paths` | Daftar path log Laravel yang dipantau |
-| `scanner.enabled` | Pemindai file webshell/backdoor (default `false`) |
-| `scanner.scan_interval` | Interval scan (default `6h`) |
-| `scanner.web_dirs` | Direktori web yang dipindai saat scanner aktif |
-| `scanner.watch_paths` | Path yang dipantau perubahan integritas (mis. `.env`, `/etc/nginx`) |
+| `dashboard_url` | The Nawasara dashboard address (filled in automatically) |
+| `agent_id` | The agent's unique ID (received automatically at registration) |
+| `api_key` | Auth key (`nwa_…`, received automatically, stored `chmod 600`) |
+| `heartbeat_interval` | Heartbeat interval (default `30s`) |
+| `plugins.enabled` | Active collectors: `nginx`, `ssh`, `laravel` |
+| `plugins.laravel.log_paths` | List of Laravel log paths to watch |
+| `scanner.enabled` | Webshell/backdoor file scanner (default `false`) |
+| `scanner.scan_interval` | Scan interval (default `6h`) |
+| `scanner.web_dirs` | Web directories scanned when the scanner is active |
+| `scanner.watch_paths` | Paths watched for integrity changes (e.g. `.env`, `/etc/nginx`) |
 
-**Struktur config (contoh):**
+**Config structure (example):**
 
 ```yaml
 dashboard_url: https://nawasara.ponorogo.go.id
@@ -221,7 +221,7 @@ plugins:
       - /home/*/public_html/storage/logs/*.log
 
 scanner:
-  enabled: false                 # set true untuk aktifkan pemindai file (Fase 3)
+  enabled: false                 # set true to enable the file scanner (Phase 3)
   scan_interval: 6h
   web_dirs:
     - /var/www/html
@@ -232,17 +232,17 @@ scanner:
   hash_db: /var/lib/nawasara-agent/hashes.db
 ```
 
-**Menyalakan pemindai file (Fase 3):** edit config → `scanner.enabled: true` →
-sesuaikan `web_dirs` & `watch_paths` → restart:
+**Turning on the file scanner (Phase 3):** edit the config, set
+`scanner.enabled: true`, adjust `web_dirs` and `watch_paths`, then restart:
 
 ```bash
 nano /etc/nawasara-agent/config.yaml
 systemctl restart nawasara-agent
 ```
 
-## Cara manual (kalau `curl | bash` dilarang kebijakan server)
+## Manual way (if server policy forbids `curl | bash`)
 
-**1. Unduh binary** (ganti `amd64` → `arm64` untuk server ARM):
+**1. Download the binary** (change `amd64` to `arm64` for ARM servers):
 
 ```bash
 curl -sSL -o /usr/local/bin/nawasara-agent \
@@ -250,7 +250,7 @@ curl -sSL -o /usr/local/bin/nawasara-agent \
 chmod +x /usr/local/bin/nawasara-agent
 ```
 
-**2. Daftarkan agen** (catat `agent_id` + `api_key` — api_key hanya muncul sekali):
+**2. Register the agent** (note the `agent_id` and `api_key`; the api_key only appears once):
 
 ```bash
 curl -s -X POST https://nawasara.ponorogo.go.id/api/agent/register \
@@ -258,11 +258,11 @@ curl -s -X POST https://nawasara.ponorogo.go.id/api/agent/register \
   -d "{\"name\":\"$(hostname)\",\"hostname\":\"$(hostname)\",\"os\":\"linux\",\"arch\":\"$(uname -m)\"}"
 ```
 
-**3. Tulis config** `/etc/nawasara-agent/config.yaml` — tempel `agent_id`/`api_key`
-dari langkah 2, ikuti struktur di atas.
+**3. Write the config** `/etc/nawasara-agent/config.yaml`. Paste the
+`agent_id`/`api_key` from step 2, following the structure above.
 
-**4. Buat service systemd** `/etc/systemd/system/nawasara-agent.service`.
-⚠️ `ExecStart` **wajib** pakai subcommand `run`:
+**4. Create the systemd service** `/etc/systemd/system/nawasara-agent.service`.
+The `ExecStart` line **must** use the `run` subcommand:
 
 ```ini
 [Unit]
@@ -282,17 +282,18 @@ StandardError=append:/var/log/nawasara-agent/agent.log
 WantedBy=multi-user.target
 ```
 
-**5. Aktifkan & jalankan:**
+**5. Enable and start:**
 
 ```bash
 systemctl daemon-reload
 systemctl enable --now nawasara-agent
 ```
 
-## Pemecahan masalah
+## Troubleshooting
 
-**🔴 Skrip berhenti "Registration failed"** — endpoint pendaftaran tak terjangkau
-(firewall / tantangan bot Cloudflare memblokir curl dari VM). Uji manual:
+**Script stops at "Registration failed".** The registration endpoint is
+unreachable (a firewall or Cloudflare bot challenge is blocking curl from the
+VM). Test manually:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
@@ -301,63 +302,63 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   -d '{"name":"t","hostname":"t","os":"linux","arch":"x86_64"}'
 ```
 
-Harus `201`. Kalau `403`/timeout → minta admin membuka jalur `/agent/*` dari IP
-server ini di WAF Cloudflare.
+It should be `201`. If it is `403` or times out, ask an admin to open the
+`/agent/*` path from this server's IP in the Cloudflare WAF.
 
-**🔴 Log terus "HTTP 403, buffering"** — laporan ditolak; buffer lama menyimpan
-payload gagal. Bersihkan buffer lalu restart:
+**Log keeps saying "HTTP 403, buffering".** Reports are being rejected, and the
+old buffer holds the failed payloads. Clear the buffer, then restart:
 
 ```bash
 rm -f /var/lib/nawasara-agent/buffer.db
 systemctl restart nawasara-agent
 ```
 
-Kalau masih 403, sumbernya bukan di agen — hubungi admin dashboard untuk cek
-gating `/api/agent/*`.
+If it is still 403, the source is not the agent; contact the dashboard admin to
+check the `/api/agent/*` gating.
 
-**🟠 status=203/EXEC saat start** — `ExecStart` tanpa subcommand `run`. Pastikan
-barisnya `… nawasara-agent run --config …`, lalu:
+**status=203/EXEC at start.** The `ExecStart` is missing the `run` subcommand.
+Make sure the line reads `… nawasara-agent run --config …`, then:
 
 ```bash
 systemctl daemon-reload && systemctl restart nawasara-agent
 ```
 
-**🟠 Binary hanya beberapa byte / "Not Found"** — unduhan mengembalikan halaman
-error. Cek ukuran (harus belasan MB):
+**Binary is only a few bytes / "Not Found".** The download returned an error
+page. Check the size (it should be tens of MB):
 
 ```bash
 ls -lh /usr/local/bin/nawasara-agent
 ```
 
-Kalau kecil → repo release belum publik atau tag rilis salah. Unduh ulang setelah
-admin mengonfirmasi release tersedia.
+If it is small, the release repo is not public yet or the release tag is wrong.
+Download again after an admin confirms the release is available.
 
-## Checklist akhir
+## Final checklist
 
-- [ ] Binary di `/usr/local/bin/nawasara-agent` (belasan MB)
-- [ ] `agent_id` & `api_key` tidak kosong di `/etc/nawasara-agent/config.yaml`
-- [ ] `systemctl status nawasara-agent` → `active (running)`
-- [ ] Log ada heartbeat, tidak ada `403` berulang
-- [ ] Server tampil **online** di Security Scan → Agents
+- [ ] Binary at `/usr/local/bin/nawasara-agent` (tens of MB)
+- [ ] `agent_id` and `api_key` not empty in `/etc/nawasara-agent/config.yaml`
+- [ ] `systemctl status nawasara-agent` shows `active (running)`
+- [ ] Log has heartbeats, no repeated `403`
+- [ ] Server shows **online** in Security Scan → Agents
 
 ---
 
 ## Agent binary release
 
-Binary di-build via GitHub Actions (`release.yml`) saat push tag ke repo
-`nawasara/agent` (linux/amd64 + linux/arm64). Dashboard menyajikan:
+The binary is built via GitHub Actions (`release.yml`) when a tag is pushed to
+the `nawasara/agent` repo (linux/amd64 plus linux/arm64). The dashboard serves:
 
-- `GET /agent/install.sh` — installer one-liner (text/plain)
-- `GET /agent/download/latest/linux/{arch}/nawasara-agent` — redirect ke GitHub
-  release asset terbaru
+- `GET /agent/install.sh`: the one-liner installer (text/plain)
+- `GET /agent/download/latest/linux/{arch}/nawasara-agent`: a redirect to the
+  latest GitHub release asset
 
-> Repo release harus **public** agar download asset tak 404.
+> The release repo must be **public** or the asset download 404s.
 
 ## Roadmap
 
-- **F1:** SQL signal detector + findings + triage UI + alerts. ✅
-- **F2:** Host agent — log collectors (nginx/ssh/laravel) + incident reporting. ✅
-- **F3:** Agent file scanner — webshell/backdoor signatures + file integrity. ✅
+- **F1:** SQL signal detector plus findings plus triage UI plus alerts. Done.
+- **F2:** Host agent, with log collectors (nginx/ssh/laravel) plus incident reporting. Done.
+- **F3:** Agent file scanner, with webshell/backdoor signatures plus file integrity. Done.
 - **F4:** Live HTTP probe (cloaking, redirect-on-fetch) via sidecar.
-- **F5:** Auto-response — block malicious source IP via `nawasara/opnsense`
+- **F5:** Auto-response, blocking a malicious source IP via the `nawasara/opnsense`
   firewall blocklist (`FirewallBlocklistService::block($ip)`).
