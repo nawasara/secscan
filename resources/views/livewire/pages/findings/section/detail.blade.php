@@ -15,6 +15,14 @@
                     <span class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">Skor {{ $d->score }}</span>
                 </div>
 
+                @if ($d->stillInDatabase())
+                    <div class="rounded-lg border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-200">
+                        Ditandai selesai {{ $d->resolved_at?->diffForHumans() }}, tetapi isinya masih terdeteksi di database
+                        {{ $d->last_detected_at?->diffForHumans() }}. Bila akun hosting dinonaktifkan, situs memang tidak tayang,
+                        tetapi isi ini akan tayang lagi begitu akun diaktifkan. Bersihkan database lebih dulu.
+                    </div>
+                @endif
+
                 <dl class="grid grid-cols-2 gap-3 text-sm">
                     <div>
                         <dt class="text-xs text-neutral-500 dark:text-neutral-400">Situs</dt>
@@ -161,7 +169,7 @@
                             <x-nawasara-ui::form.textarea wire:model="triageReason" label="Catatan (opsional)" :rows="2"
                                 placeholder="Alasan / tindak lanjut..." />
                             <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                Selesai: bila pemindai masih mendeteksinya, temuan terbuka lagi.
+                                Selesai: pemindai tetap memeriksa. Temuan dari probe HTTP terbuka lagi bila masih terdeteksi; temuan database diberi tanda "masih ada di database".
                                 False positive: pemindai tidak akan membukanya lagi.
                             </p>
                         </div>

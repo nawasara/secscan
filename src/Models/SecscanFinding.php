@@ -61,6 +61,22 @@ class SecscanFinding extends Model
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_ACKNOWLEDGED], true);
     }
 
+    /**
+     * Marked Selesai, but the database scan still finds the content.
+     *
+     * Usually the cPanel account was suspended: the site is offline, the
+     * injected rows are not. Not reopened (see ScanWordpressJob), only shown,
+     * so the database gets cleaned before the account is reactivated.
+     */
+    public function stillInDatabase(): bool
+    {
+        return $this->status === self::STATUS_RESOLVED
+            && ! $this->isHttpSource()
+            && $this->resolved_at !== null
+            && $this->last_detected_at !== null
+            && $this->last_detected_at->gt($this->resolved_at);
+    }
+
     public static function threatLabels(): array
     {
         return [

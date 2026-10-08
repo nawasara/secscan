@@ -77,7 +77,6 @@ class ScanWordpressJob extends AbstractSyncJob
         $alerted = 0;
         $alertMin = (int) config('nawasara-secscan.thresholds.alert_min_score', 70);
         $triage = app(FindingTriage::class);
-        $reopened = 0;
 
         foreach ($result['findings'] as $f) {
 
@@ -101,14 +100,17 @@ class ScanWordpressJob extends AbstractSyncJob
                 $this->recordHistory($finding, null, SecscanFinding::STATUS_OPEN, 'Terdeteksi oleh scan otomatis.', $now);
                 $created++;
             } else {
-                // Selesai but still detected: the site is still compromised,
-                // so it goes back to Terbuka and alerts again. It used to stay
-                // Selesai here while last_detected_at kept moving, so a site
-                // closed too early served judol with nobody told. False
-                // positive stays dismissed; see FindingTriage.
-                if ($triage->reopenIfResolved($existing)) {
-                    $reopened++;
-                }
+                // Selesai stays Selesai here, unlike the HTTP probe. This scan
+                // reads the DATABASE, and the usual fix is suspending the
+                // cPanel account: the site stops serving, the injected rows
+                // stay. In production 16 of 19 "Selesai but still detected"
+                // were exactly that, and reopening them would alert "site
+                // compromised" about sites that are offline.
+                //
+                // last_detected_at still moves, which is the point: the panel
+                // shows "masih ada di database" when it is newer than
+                // resolved_at (SecscanFinding::stillInDatabase()), so the dirty
+                // database is not forgotten when the account is reactivated.
 
                 $existing->forceFill([
                     'site_url' => $f['site_url'] ?: $existing->site_url,
@@ -151,7 +153,6 @@ class ScanWordpressJob extends AbstractSyncJob
         $autoResolved = $triage->autoResolve($stale);
 
         return [
-            'reopened' => $reopened,
             'auto_resolved' => $autoResolved,
             'scanned' => $result['scanned_total'],
             'wordpress' => $result['wordpress_total'],

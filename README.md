@@ -35,9 +35,16 @@ Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 Every status change, by staff or by a scanner, goes through
 `Services\FindingTriage`, so each one leaves a history row.
 
-- **Selesai detected again is reopened** to Terbuka and alerts again. It used
-  to stay Selesai while `last_detected_at` kept moving, so a site closed too
-  early kept serving judol with nobody told.
+- **Selesai detected again by the HTTP probe is reopened** to Terbuka and
+  alerts again: the live page is still serving it. It used to stay Selesai
+  while `last_detected_at` kept moving, so nobody was told.
+- **Selesai detected again by the database scan is NOT reopened**, only
+  marked "Masih ada di database" (`SecscanFinding::stillInDatabase()`).
+  The usual fix is suspending the cPanel account, which takes the site
+  offline but leaves the injected rows; in production 16 of 19 such findings
+  were exactly that, and reopening them would alert about offline sites. The
+  mark keeps the dirty database from being forgotten when the account comes
+  back.
 - **False positive is never reopened.** That is staff saying the detector is
   wrong about the site; the detector repeating itself does not change that.
   Use Selesai for "cleaned", False positive for "the detector is wrong".

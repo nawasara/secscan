@@ -80,7 +80,7 @@
                     if ($canTriage) {
                         $items[] = ['type' => 'click', 'label' => 'Tandai Selesai', 'wire:click' => 'resolve('.$finding->id.')',
                             'icon' => 'lucide-circle-check', 'permission' => 'secscan.finding.triage',
-                            'confirm' => 'Tandai temuan ini selesai? Bila pemindai masih mendeteksinya, temuan akan terbuka lagi.'];
+                            'confirm' => 'Tandai temuan ini selesai? Pemindai tetap memeriksanya: bila masih terdeteksi, temuan ditandai lagi.'];
                         $items[] = ['type' => 'click', 'label' => 'False Positive', 'wire:click' => 'markFalsePositive('.$finding->id.')',
                             'icon' => 'lucide-ban', 'permission' => 'secscan.finding.triage',
                             'confirm' => 'Tandai sebagai false positive? Pemindai tidak akan membuka temuan ini lagi.'];
@@ -116,6 +116,9 @@
                     </td>
                     <td class="px-6 py-4">
                         <x-nawasara-ui::badge :color="$finding->statusColor()">{{ $finding->statusLabel() }}</x-nawasara-ui::badge>
+                        @if ($finding->stillInDatabase())
+                            <div class="mt-1 text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">Masih ada di database</div>
+                        @endif
                     </td>
                     <td class="px-6 py-4 text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
                         {{ $finding->last_detected_at?->diffForHumans() ?? '-' }}
