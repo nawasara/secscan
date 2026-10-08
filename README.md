@@ -30,6 +30,26 @@ alerts via `nawasara/alerting`.
 Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 `secscan.agent.scan`, `secscan.agent.command`.
 
+### Finding status follows the scanner
+
+Every status change, by staff or by a scanner, goes through
+`Services\FindingTriage`, so each one leaves a history row.
+
+- **Selesai detected again is reopened** to Terbuka and alerts again. It used
+  to stay Selesai while `last_detected_at` kept moving, so a site closed too
+  early kept serving judol with nobody told.
+- **False positive is never reopened.** That is staff saying the detector is
+  wrong about the site; the detector repeating itself does not change that.
+  Use Selesai for "cleaned", False positive for "the detector is wrong".
+- **Active findings close themselves** once the site was scanned cleanly and
+  the signal has been absent for `auto_resolve_after_hours` (24). Only
+  databases whose sweep finished, and pages actually fetched, count: a scan
+  that errored or was time-boxed says nothing about whether a site is clean.
+  24 h rather than one scan, so a score hovering at the threshold does not
+  close and reopen every hour.
+- The page opens on **Terbuka + Diakui**. Diakui means someone is on it, not
+  done, so it stays visible.
+
 ---
 
 ## Setup (database scanner)

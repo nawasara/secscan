@@ -25,6 +25,7 @@ class SqlSignalDetector
      * @return array{
      *   scanned_total:int,
      *   wordpress_total:int,
+     *   inspected: list<string>,
      *   findings: list<array{db_name:string, site_url:?string, site_name:?string, threat_type:string, score:int, severity:string, evidence:array}>
      * }
      */
@@ -47,6 +48,11 @@ class SqlSignalDetector
         $cmsCount = 0;
         $errors = 0;
         $findings = [];
+
+        // Databases whose sweep FINISHED. Only these may have findings closed
+        // for "no longer detected": a database that threw half-way says
+        // nothing about whether its site is clean.
+        $inspected = [];
 
         try {
             foreach ($databases as $db) {
@@ -73,6 +79,7 @@ class SqlSignalDetector
                                 ], $f);
                             }
                         }
+                        $inspected[] = $db;
                         continue;
                     }
                     $wpCount++;
@@ -85,6 +92,7 @@ class SqlSignalDetector
                             'site_name' => $site['site_name'],
                         ], $f);
                     }
+                    $inspected[] = $db;
                 } catch (\Throwable $e) {
                     $errors++;
                     report($e);
@@ -101,6 +109,7 @@ class SqlSignalDetector
             'wordpress_total' => $wpCount,
             'cms_total' => $cmsCount,
             'errors' => $errors,
+            'inspected' => $inspected,
             'findings' => $findings,
         ];
     }

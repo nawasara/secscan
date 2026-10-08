@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Models\SecscanFindingHistory;
+use Nawasara\Secscan\Services\FindingTriage;
 use Nawasara\Secscan\Services\SqlSignalDetector;
 use Nawasara\Sync\Jobs\AbstractSyncJob;
 
@@ -71,14 +72,14 @@ class ScanWordpressJob extends AbstractSyncJob
         $result = $detector->scanAll();
 
         $now = now();
-        $seenKeys = [];
         $created = 0;
         $updated = 0;
         $alerted = 0;
         $alertMin = (int) config('nawasara-secscan.thresholds.alert_min_score', 70);
+        $triage = app(FindingTriage::class);
+        $reopened = 0;
 
         foreach ($result['findings'] as $f) {
-            $seenKeys[] = $f['db_name'].'|'.$f['threat_type'];
 
             $existing = SecscanFinding::where('db_name', $f['db_name'])
                 ->where('threat_type', $f['threat_type'])
@@ -100,9 +101,15 @@ class ScanWordpressJob extends AbstractSyncJob
                 $this->recordHistory($finding, null, SecscanFinding::STATUS_OPEN, 'Terdeteksi oleh scan otomatis.', $now);
                 $created++;
             } else {
-                // Refresh score/evidence/last_detected. Do NOT resurrect a
-                // finding an operator already dismissed (false_positive/
-                // resolved) — that would re-spam. Only refresh active rows.
+                // Selesai but still detected: the site is still compromised,
+                // so it goes back to Terbuka and alerts again. It used to stay
+                // Selesai here while last_detected_at kept moving, so a site
+                // closed too early served judol with nobody told. False
+                // positive stays dismissed; see FindingTriage.
+                if ($triage->reopenIfResolved($existing)) {
+                    $reopened++;
+                }
+
                 $existing->forceFill([
                     'site_url' => $f['site_url'] ?: $existing->site_url,
                     'site_name' => $f['site_name'] ?: $existing->site_name,
@@ -133,7 +140,19 @@ class ScanWordpressJob extends AbstractSyncJob
             }
         }
 
+        // Active findings on databases swept cleanly this run whose signal has
+        // been absent long enough: the site was cleaned. Detected-this-run rows
+        // were just stamped with $now, so the age check already excludes them.
+        $stale = SecscanFinding::active()
+            ->where(fn ($q) => $q->whereNull('scan_source')->orWhere('scan_source', 'sql'))
+            ->whereIn('db_name', $result['inspected'] ?? [])
+            ->where('last_detected_at', '<', $now->copy()->subHours((int) config('nawasara-secscan.auto_resolve_after_hours', 24)))
+            ->get();
+        $autoResolved = $triage->autoResolve($stale);
+
         return [
+            'reopened' => $reopened,
+            'auto_resolved' => $autoResolved,
             'scanned' => $result['scanned_total'],
             'wordpress' => $result['wordpress_total'],
             'cms' => $result['cms_total'] ?? 0,

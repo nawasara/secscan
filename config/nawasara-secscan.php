@@ -112,6 +112,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Finding lifecycle
+    |--------------------------------------------------------------------------
+    | An active finding (Terbuka/Diakui) is closed automatically once its site
+    | was scanned cleanly and the signal has not been seen for this many hours.
+    | A Selesai finding detected again is reopened. Without both, the status
+    | column meant nothing: cleaned sites stayed "Terbuka" forever, and sites
+    | marked "Selesai" kept serving judol with no alert.
+    |
+    | 24 h, not one scan: a score hovering at the threshold would otherwise
+    | close and reopen every hour, flooding the history and the alert channel.
+    */
+    'auto_resolve_after_hours' => env('SECSCAN_AUTO_RESOLVE_AFTER_HOURS', 24),
+
+    /*
+    |--------------------------------------------------------------------------
     | F2 HTTP Probe — SiteHttpFetcher configuration
     |--------------------------------------------------------------------------
     | Probes *.ponorogo.go.id hostnames from CF DNS records with Googlebot UA.

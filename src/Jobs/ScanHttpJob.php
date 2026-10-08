@@ -6,6 +6,7 @@ use Nawasara\Alerting\Facades\Alerter;
 use Nawasara\Cloudflare\Models\CloudflareDnsRecord;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Models\SecscanFindingHistory;
+use Nawasara\Secscan\Services\FindingTriage;
 use Nawasara\Secscan\Services\HtmlSignalDetector;
 use Nawasara\Secscan\Services\SiteHttpFetcher;
 use Nawasara\Sync\Jobs\AbstractSyncJob;
@@ -59,6 +60,12 @@ class ScanHttpJob extends AbstractSyncJob
         $skipped  = 0;
         $hostsDone = 0;
 
+        // Pages fetched and read this run. Only these may have findings closed
+        // for "no longer detected": a page that errored, hit a challenge, or
+        // was not reached before the time box says nothing about whether it
+        // is clean.
+        $scannedPaths = [];
+
         foreach ($hostnames as $hostname) {
             if (microtime(true) - $started > $budgetSecs) {
                 $timedOut = true;
@@ -86,6 +93,7 @@ class ScanHttpJob extends AbstractSyncJob
                 }
 
                 $scanned++;
+                $scannedPaths[$hostname.'|'.$path] = true;
                 $html     = $result['body'] ?? '';
                 $url      = $result['final_url'] ?? $result['url'];
                 $signals  = $detector->detect($html, $url, $hostname);
@@ -120,7 +128,16 @@ class ScanHttpJob extends AbstractSyncJob
             \Illuminate\Support\Facades\Cache::put('secscan:http:scan_offset', $this->scanOffset + $hostsDone, now()->addDay());
         }
 
+        $hours = (int) config('nawasara-secscan.auto_resolve_after_hours', 24);
+        $stale = SecscanFinding::active()
+            ->where('scan_source', 'http')
+            ->where('last_detected_at', '<', now()->subHours($hours))
+            ->get()
+            ->filter(fn (SecscanFinding $f) => isset($scannedPaths[$f->db_name.'|'.$f->scan_path]));
+        $autoResolved = app(FindingTriage::class)->autoResolve($stale);
+
         return [
+            'auto_resolved'     => $autoResolved,
             'hosts_total'       => count($hostnames),
             'hosts_scanned'     => $hostsDone,
             'paths_scanned'     => $scanned,
@@ -283,13 +300,14 @@ class ScanHttpJob extends AbstractSyncJob
 
             $created++;
         } else {
-            // Don't resurrect dismissed findings
-            if (in_array($existing->status, [
-                SecscanFinding::STATUS_RESOLVED,
-                SecscanFinding::STATUS_FALSE_POSITIVE,
-            ], true)) {
+            // False positive stays dismissed: staff said the detector is wrong
+            // about this page. Selesai detected again is reopened, because the
+            // page is still serving what was detected; see FindingTriage.
+            if ($existing->status === SecscanFinding::STATUS_FALSE_POSITIVE) {
                 return compact('created', 'updated', 'alerted');
             }
+
+            app(FindingTriage::class)->reopenIfResolved($existing);
 
             $existing->forceFill([
                 'scan_url'        => $url,
