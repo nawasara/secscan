@@ -2,8 +2,8 @@
     <x-slot name="breadcrumb">
         <livewire:nawasara-ui.shared-components.breadcrumb
             :items="[
-                ['label' => 'Security Scan', 'url' => route('nawasara-secscan.dashboard')],
-                ['label' => 'Incidents', 'url' => route('nawasara-secscan.incidents')],
+                ['label' => 'Keamanan', 'url' => route('nawasara-secscan.dashboard')],
+                ['label' => 'Insiden', 'url' => route('nawasara-secscan.incidents')],
                 ['label' => 'IP: ' . $ip],
             ]" />
     </x-slot>
@@ -75,12 +75,12 @@
                 color="neutral" />
             <x-nawasara-ui::stat-card compact
                 icon="lucide-octagon-alert"
-                label="Critical"
+                label="Kritis"
                 :value="$this->summary['critical']"
                 color="danger" />
             <x-nawasara-ui::stat-card compact
                 icon="lucide-triangle-alert"
-                label="High"
+                label="Tinggi"
                 :value="$this->summary['high']"
                 color="warning" />
             <x-nawasara-ui::stat-card compact

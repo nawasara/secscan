@@ -48,6 +48,11 @@ class IpBlock extends Model
         return $this->status === self::STATUS_ACTIVE;
     }
 
+    public static function reasonLabel(?string $reason): string
+    {
+        return SecurityIncident::labelForType($reason);
+    }
+
     /** True for a decided-but-not-actually-enforced block (dry-run mode). */
     public function isDryRun(): bool
     {

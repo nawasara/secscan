@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Nawasara\Secscan\Http\Resources\IpBlockResource;
 use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Services\CloudflareBlockService;
+use Nawasara\Secscan\Services\IpBlockManager;
 
 /**
  * Public API untuk IP blocking di Cloudflare edge.
@@ -99,73 +100,48 @@ class IpBlockController extends Controller
      * Block IP di Cloudflare. Idempoten: kalau IP sudah aktif ter-block,
      * kembalikan record yang ada (200) alih-alih membuat duplikat.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, IpBlockManager $manager): JsonResponse
     {
         $data = $request->validate([
             'ip'     => ['required', 'string', 'ip'],
             'reason' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $ip = $data['ip'];
+        // Whitelist, idempotency and the dry-run switch are enforced in
+        // IpBlockManager, the same place the panel uses.
+        $result = $manager->block(
+            $data['ip'],
+            $data['reason'] ?? 'manual-api',
+            'api token#'.($this->tokenId($request) ?? '?'),
+            $this->userId($request),
+        );
 
-        // Gate whitelist — SAMA dengan Decision Engine (fail-safe). Tanpa ini,
-        // sebuah token API bisa dipakai (sengaja atau tidak) mem-block IP kantor
-        // sendiri, range Cloudflare, atau search bot. Tolak di sini.
-        $wl = \Nawasara\Secscan\Support\IpWhitelist::check($ip);
-        if ($wl['whitelisted']) {
+        if ($result['error'] !== null && str_starts_with($result['error'], IpBlockManager::ERROR_WHITELISTED)) {
             return response()->json([
                 'error'   => 'whitelisted',
-                'message' => 'IP ini di-whitelist ('.$wl['reason'].') dan tidak boleh di-block.',
+                'message' => 'IP ini di-whitelist ('.substr($result['error'], strlen(IpBlockManager::ERROR_WHITELISTED) + 1).') dan tidak boleh di-block.',
             ], 422);
         }
 
-        // Idempoten — jangan double-block.
-        if ($existing = IpBlock::active()->where('ip', $ip)->first()) {
+        if ($result['error'] === IpBlockManager::ERROR_CLOUDFLARE) {
             return response()->json([
-                'data'    => (new IpBlockResource($existing))->resolve(),
+                'error'   => 'cloudflare_error',
+                'message' => 'Gagal membuat rule di Cloudflare. IP tidak ter-block.',
+            ], 502);
+        }
+
+        if ($result['existing']) {
+            return response()->json([
+                'data'    => (new IpBlockResource($result['block']))->resolve(),
                 'message' => 'IP sudah ter-block.',
             ], 200);
         }
 
-        $dryRun = (bool) config('nawasara-secscan.autoblock.dry_run', true);
-        $prefix = (string) config('nawasara-secscan.autoblock.notes_prefix', 'nawasara-autoblock');
-        $reason = $data['reason'] ?? 'manual-api';
-        $notes  = sprintf('%s:api ip=%s reason=%s by=token#%s', $prefix, $ip, $reason, $this->tokenId($request) ?? '?');
-
-        // Push ke Cloudflare hanya kalau bukan dry-run. Sama persis dengan
-        // Decision Engine — token API tidak bisa mem-bypass dry-run global.
-        $cfRuleId = null;
-        if (! $dryRun) {
-            $cfRuleId = $this->blocker->block($ip, $notes);
-            if (! $cfRuleId) {
-                Log::warning('[secscan] API block failed at Cloudflare', ['ip' => $ip]);
-
-                return response()->json([
-                    'error'   => 'cloudflare_error',
-                    'message' => 'Gagal membuat rule di Cloudflare. IP tidak ter-block.',
-                ], 502);
-            }
-        }
-
-        $block = IpBlock::create([
-            'ip'          => $ip,
-            'status'      => IpBlock::STATUS_ACTIVE,
-            'reason'      => $reason,
-            'cf_rule_id'  => $cfRuleId,
-            'incident_id' => null,
-            'dry_run'     => $dryRun,
-            'notes'       => $notes,
-            'blocked_by'  => $this->userId($request),
-            'blocked_at'  => now(),
-        ]);
-
-        Log::info('[secscan] API '.($dryRun ? 'WOULD block (dry-run)' : 'BLOCKED').' '.$ip, [
-            'reason' => $reason, 'cf_rule' => $cfRuleId, 'token' => $this->tokenId($request),
-        ]);
+        $block = $result['block'];
 
         return response()->json([
             'data'    => (new IpBlockResource($block))->resolve(),
-            'message' => $dryRun ? 'Dry-run: block dicatat tapi TIDAK di-push ke Cloudflare.' : 'IP ter-block di Cloudflare.',
+            'message' => $block->dry_run ? 'Dry-run: block dicatat tapi TIDAK di-push ke Cloudflare.' : 'IP ter-block di Cloudflare.',
         ], 201);
     }
 
@@ -176,7 +152,7 @@ class IpBlockController extends Controller
      * Buka blokir. Menghapus rule di Cloudflare (kalau ada) lalu menandai
      * record sebagai removed.
      */
-    public function destroy(Request $request, string $ip): JsonResponse
+    public function destroy(Request $request, string $ip, IpBlockManager $manager): JsonResponse
     {
         $block = IpBlock::active()->where('ip', $ip)->latest('blocked_at')->first();
 
@@ -187,29 +163,12 @@ class IpBlockController extends Controller
             ], 404);
         }
 
-        // Hapus rule di CF kalau benar-benar ada (bukan dry-run tanpa rule id).
-        if ($block->cf_rule_id) {
-            $ok = $this->blocker->unblock($block->cf_rule_id);
-            if (! $ok) {
-                Log::warning('[secscan] API unblock: Cloudflare delete failed', ['ip' => $ip, 'rule' => $block->cf_rule_id]);
-
-                return response()->json([
-                    'error'   => 'cloudflare_error',
-                    'message' => 'Gagal menghapus rule di Cloudflare. Block belum dibuka.',
-                ], 502);
-            }
+        if (! $manager->unblock($block, $this->userId($request))) {
+            return response()->json([
+                'error'   => 'cloudflare_error',
+                'message' => 'Gagal menghapus rule di Cloudflare. Block belum dibuka.',
+            ], 502);
         }
-
-        $block->update([
-            'status'       => IpBlock::STATUS_REMOVED,
-            'unblocked_by' => $this->userId($request),
-            'unblocked_at' => now(),
-        ]);
-
-        // Lift the host-level firewall rule too, otherwise the IP stays dropped
-        // at the origin with nothing in the UI explaining why.
-        app(\Nawasara\Secscan\Services\DecisionEngine::class)
-            ->queueHostUnblock($block, $this->userId($request));
 
         Log::info('[secscan] API unblocked '.$ip, ['token' => $this->tokenId($request)]);
 

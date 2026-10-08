@@ -2,8 +2,8 @@
     <x-slot name="breadcrumb">
         <livewire:nawasara-ui.shared-components.breadcrumb
             :items="[
-                ['label' => 'Security Scan', 'url' => route('nawasara-secscan.dashboard')],
-                ['label' => 'Agents', 'url' => route('nawasara-secscan.agents')],
+                ['label' => 'Keamanan', 'url' => route('nawasara-secscan.dashboard')],
+                ['label' => 'Agen', 'url' => route('nawasara-secscan.agents')],
                 ['label' => $this->agent->name],
             ]" />
     </x-slot>
@@ -26,12 +26,12 @@
                 color="neutral" />
             <x-nawasara-ui::stat-card compact
                 icon="lucide-octagon-alert"
-                label="Critical"
+                label="Kritis"
                 :value="$this->incidentStats['critical']"
                 color="danger" />
             <x-nawasara-ui::stat-card compact
                 icon="lucide-triangle-alert"
-                label="High"
+                label="Tinggi"
                 :value="$this->incidentStats['high']"
                 color="warning" />
             <x-nawasara-ui::stat-card compact
@@ -48,11 +48,11 @@
 
                 {{-- Agent info card --}}
                 <x-nawasara-ui::page.card>
-                    <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-3">Info Agent</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-3">Info Agen</p>
                     <dl class="space-y-2 text-sm">
                         <div class="flex justify-between gap-2">
                             <dt class="text-neutral-500 dark:text-neutral-400 shrink-0">Versi</dt>
-                            <dd class="font-mono text-neutral-800 dark:text-neutral-100">{{ $this->agent->agent_version ?? '—' }}</dd>
+                            <dd class="font-mono text-neutral-800 dark:text-neutral-100">{{ $this->agent->versionLabel() ?? '-' }}</dd>
                         </div>
                         <div class="flex justify-between gap-2">
                             <dt class="text-neutral-500 dark:text-neutral-400 shrink-0">OS</dt>

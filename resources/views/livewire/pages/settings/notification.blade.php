@@ -2,7 +2,7 @@
     <x-slot name="breadcrumb">
         <livewire:nawasara-ui.shared-components.breadcrumb
             :items="[
-                ['label' => 'Security Scan', 'url' => route('nawasara-secscan.dashboard')],
+                ['label' => 'Keamanan', 'url' => route('nawasara-secscan.dashboard')],
                 ['label' => 'Notifikasi'],
             ]" />
     </x-slot>

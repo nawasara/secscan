@@ -58,7 +58,7 @@ class Show extends Component
             'total'    => (clone $base)->count(),
             'critical' => (clone $base)->where('severity', SecurityIncident::SEVERITY_CRITICAL)->count(),
             'high'     => (clone $base)->where('severity', SecurityIncident::SEVERITY_HIGH)->count(),
-            'today'    => (clone $base)->whereDate('detected_at', today())->count(),
+            'today'    => (clone $base)->today()->count(),
         ];
     }
 

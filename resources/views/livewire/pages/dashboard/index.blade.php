@@ -7,13 +7,13 @@
     <x-nawasara-ui::page.container>
         <x-nawasara-ui::page-header
             title="Keamanan Situs"
-            description="Deteksi indikasi situs ter-retas, judi online, dan malware dari database yang dimonitor."
+            description="Situs ter-retas, judi online, dan malware dari pemindaian database dan halaman, serta serangan yang dilaporkan agen."
             :count="$this->stats['sites'] ? $this->stats['sites'].' situs bermasalah' : null">
             @if ($this->isConfigured)
                 @can('secscan.scan.execute')
                     <x-nawasara-ui::icon-button
                         icon="radar"
-                        tooltip="Pindai sekarang"
+                        tooltip="Pindai database sekarang"
                         wire:click="scanNow"
                         loadingTarget="scanNow" />
                 @endcan
@@ -24,24 +24,24 @@
         @if ($this->agentStats['total'] > 0)
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                 <x-nawasara-ui::stat-card compact
-                    label="Agents Online"
+                    label="Agen online"
                     :value="$this->agentStats['online'] . ' / ' . $this->agentStats['total']"
                     color="success"
                     icon="lucide-server" />
                 <x-nawasara-ui::stat-card compact
-                    label="Agents Offline"
+                    label="Agen offline"
                     :value="$this->agentStats['offline']"
                     :color="$this->agentStats['offline'] > 0 ? 'danger' : 'neutral'"
                     icon="lucide-server-off" />
                 <x-nawasara-ui::stat-card compact
-                    label="Incident Kritis Hari Ini"
+                    label="Insiden kritis hari ini"
                     :value="$this->agentStats['critical_today']"
                     :color="$this->agentStats['critical_today'] > 0 ? 'danger' : 'neutral'"
                     icon="lucide-octagon-alert" />
                 <div class="flex items-center justify-end">
                     <x-nawasara-ui::button color="neutral" variant="outline" size="sm"
                         :href="route('nawasara-secscan.agents')" wire:navigate>
-                        Kelola Agents →
+                        Kelola agen →
                     </x-nawasara-ui::button>
                 </div>
             </div>
@@ -58,7 +58,7 @@
             </x-nawasara-ui::empty-state>
         @else
             {{-- Site scan stat cards --}}
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
                 <x-nawasara-ui::stat-card compact
                     label="Kritis"
                     :value="$this->stats['critical']"
@@ -81,6 +81,12 @@
                     :value="$this->stats['sites']"
                     color="neutral"
                     icon="lucide-globe" />
+                <x-nawasara-ui::stat-card compact
+                    label="Masih ada di database"
+                    :value="$this->stats['still_in_db']"
+                    :color="$this->stats['still_in_db'] > 0 ? 'warning' : 'neutral'"
+                    icon="lucide-database"
+                    description="sudah selesai, belum dibersihkan" />
             </div>
 
             {{-- Top findings preview --}}
@@ -98,7 +104,7 @@
                         <div class="min-w-0">
                             <div class="flex items-center gap-2">
                                 <x-nawasara-ui::badge :color="$finding->severityColor()">
-                                    {{ ucfirst($finding->severity) }}
+                                    {{ ['critical' => 'Kritis', 'warning' => 'Peringatan', 'info' => 'Info'][$finding->severity] ?? ucfirst($finding->severity) }}
                                 </x-nawasara-ui::badge>
                                 <span class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">
                                     {{ $finding->site_name ?: $finding->db_name }}

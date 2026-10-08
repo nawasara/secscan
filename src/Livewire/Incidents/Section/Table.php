@@ -58,16 +58,17 @@ class Table extends Component
     {
         $this->authorize('secscan.export');
 
-        return SecurityIncident::with('agent')
-            ->orderByDesc('last_seen_at')
+        // The current filtered result, not the whole table: 79 thousand rows
+        // with every agent's noise is not a report anyone can use.
+        return $this->filteredQuery()
             ->limit($this->exportLimit)
             ->get()
             ->map(fn (SecurityIncident $inc) => [
                 'Incident ID'   => $inc->incident_id,
                 'Agent'         => $inc->agent?->name,
                 'Hostname'      => $inc->agent?->hostname,
-                'Tipe'          => $inc->typeLabel(),
-                'Severity'      => $inc->severity,
+                'Jenis'         => $inc->typeLabel(),
+                'Severity'      => $inc->severityLabel(),
                 'Source IP'     => $inc->source_ip,
                 'Score'         => $inc->score,
                 'Kejadian'      => $inc->occurrences,
@@ -80,31 +81,45 @@ class Table extends Component
             ]);
     }
 
-    public function render()
+    /** True when anything narrows the list beyond the time window. */
+    public function hasFilters(): bool
     {
-        // Window + order by last_seen_at so an ongoing (aggregated) attack that
-        // started weeks ago still surfaces in the recent window.
-        $query = SecurityIncident::with('agent')
+        return $this->search !== '' || $this->filterSeverity !== '' || $this->filterType !== '';
+    }
+
+    /**
+     * One query for the table and the export.
+     *
+     * Windowed and ordered by last_seen_at, so an ongoing (aggregated) attack
+     * that started weeks ago still surfaces in the recent window.
+     */
+    protected function filteredQuery()
+    {
+        $term = '%'.addcslashes($this->search, '\%_').'%';
+
+        return SecurityIncident::with('agent')
             ->tap(fn ($q) => $this->applyTimeWindow($q, 'last_seen_at'))
-            ->when($this->search, fn ($q) => $q->where('source_ip', 'like', "%{$this->search}%"))
+            ->when($this->search !== '', fn ($q) => $q->where('source_ip', 'like', $term))
             ->when($this->filterSeverity, fn ($q) => $q->where('severity', $this->filterSeverity))
             ->when($this->filterType, fn ($q) => $q->where('type', $this->filterType))
             ->orderByRaw("FIELD(severity, 'critical','high','medium','info')")
             ->orderByDesc('last_seen_at');
+    }
 
-        $incidents = $query->paginate(25);
+    public function render()
+    {
+        $incidents = $this->filteredQuery()->paginate(25);
 
         // Which of the IPs on this page are currently blocked at the edge? The
-        // "Blocked" badge reflects IP state, not whether THIS incident triggered
-        // the block — an IP blocked via one incident is still blocked for all of
-        // its incidents. One query for the page's IPs (no N+1).
+        // "Diblokir" badge reflects IP state, not whether THIS incident
+        // triggered the block. One query for the page's IPs (no N+1).
         $pageIps = collect($incidents->items())
             ->pluck('source_ip')->filter()->unique()->all();
         $blockedIps = $pageIps
             ? IpBlock::where('status', IpBlock::STATUS_ACTIVE)
                 ->whereIn('ip', $pageIps)
                 ->pluck('ip')
-                ->flip() // → ['1.2.3.4' => idx] for O(1) isset() lookup in blade
+                ->flip()
                 ->all()
             : [];
 
@@ -115,7 +130,7 @@ class Table extends Component
             ->limit(20)
             ->pluck('cnt', 'type')
             ->keys()
-            ->mapWithKeys(fn ($t) => [$t => ucwords(str_replace('_', ' ', $t))])
+            ->mapWithKeys(fn ($t) => [$t => SecurityIncident::labelForType($t)])
             ->toArray();
 
         return view('nawasara-secscan::livewire.pages.incidents.section.table', [

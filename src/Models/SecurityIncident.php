@@ -36,7 +36,9 @@ class SecurityIncident extends Model
 
     public function agent(): BelongsTo
     {
-        return $this->belongsTo(Agent::class, 'agent_id');
+        // withTrashed: a revoked agent's incidents still name the host they
+        // came from, instead of turning into anonymous rows.
+        return $this->belongsTo(Agent::class, 'agent_id')->withTrashed();
     }
 
     public function block(): BelongsTo
@@ -88,17 +90,61 @@ class SecurityIncident extends Model
 
     public function typeLabel(): string
     {
-        return match ($this->type) {
-            'brute_force_http'  => 'Brute Force HTTP',
-            'brute_force_ssh'   => 'Brute Force SSH',
-            'ssh_root_login'    => 'SSH Root Login',
-            'vuln_scan'         => 'Vulnerability Scan',
-            'dir_traversal'     => 'Directory Traversal',
-            'sqli_attempt'      => 'SQL Injection',
-            'xss_probe'         => 'XSS Probe',
-            'exploit_chain'     => 'Exploit Chain',
-            '4xx_storm'         => '4xx Storm',
-            default             => ucwords(str_replace('_', ' ', $this->type)),
+        return self::labelForType($this->type);
+    }
+
+    /**
+     * One label per attack type, shared by incidents and IP blocks (a block's
+     * `reason` is the type of the incident that triggered it).
+     *
+     * Established attack names stay as they are (Brute Force, SQL Injection,
+     * XSS, Webshell): staff search for and report them by those names. Only
+     * the descriptive ones are Indonesian.
+     */
+    public static function labelForType(?string $type): string
+    {
+        return match ($type) {
+            'brute_force', 'brute_force_http' => 'Brute Force HTTP',
+            'brute_force_ssh' => 'Brute Force SSH',
+            'ssh_root_login' => 'Login Root SSH',
+            'vuln_scan', 'vulnerability_scan' => 'Pemindaian Celah',
+            'dir_traversal', 'directory_traversal' => 'Directory Traversal',
+            'sqli_attempt', 'sql_injection' => 'SQL Injection',
+            'xss_probe' => 'Percobaan XSS',
+            'exploit_chain' => 'Rantai Eksploit',
+            '4xx_storm' => 'Banjir Galat 4xx',
+            'scanner_bot' => 'Bot Pemindai',
+            'webshell_upload' => 'Unggah Webshell',
+            null, '' => '-',
+            default => ucfirst(str_replace('_', ' ', $type)),
         };
+    }
+
+    /**
+     * "Hari ini" as staff in Ponorogo mean it: since midnight WIB.
+     *
+     * whereDate(..., today()) used the app timezone, which is UTC, so the
+     * "today" cards rolled over at 07:00 WIB and counted the small hours in
+     * the previous day.
+     */
+    public function scopeToday($query, string $column = 'detected_at')
+    {
+        return $query->where($column, '>=', now('Asia/Jakarta')->startOfDay()->utc());
+    }
+
+    /** @return array<string,string> */
+    public static function severityLabels(): array
+    {
+        return [
+            self::SEVERITY_CRITICAL => 'Kritis',
+            self::SEVERITY_HIGH => 'Tinggi',
+            self::SEVERITY_MEDIUM => 'Sedang',
+            self::SEVERITY_INFO => 'Info',
+        ];
+    }
+
+    public function severityLabel(): string
+    {
+        return self::severityLabels()[$this->severity] ?? ucfirst((string) $this->severity);
     }
 }

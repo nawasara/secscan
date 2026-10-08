@@ -30,6 +30,32 @@ alerts via `nawasara/alerting`.
 Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 `secscan.agent.scan`, `secscan.agent.command`.
 
+### IP blocks never expire, so the page is the cleanup path
+
+Decided on 8 October 2026: blocks stay until someone lifts them (566 active
+at the time, 455 older than 30 days). Blokir IP therefore filters by reason,
+source and age, and "Cabut N blokir" lifts the whole filtered result. It only
+appears once the list is narrowed, is sudo-gated, and runs as queued jobs of
+100 (one Cloudflare call each; a worker kills a job at the smaller of its own
+and the worker's timeout).
+
+Every manual block and every unblock goes through `Services\IpBlockManager`,
+for the panel and the API alike. An unblock that Cloudflare refuses changes
+nothing. The panel used to mark such a block "removed" anyway, so it showed
+an IP as unblocked while Cloudflare kept dropping it.
+
+### Retiring an agent
+
+"Cabut agen" (permission `secscan.agent.delete`, sudo) soft-deletes the agent,
+replaces its key hash, cancels its pending and approved commands, and
+resolves its offline alert. The commands matter: a dead agent never pulls
+them, and 170 had piled up as approved, which the panel read as "blocked on
+the host". Incidents keep naming a revoked agent (`withTrashed`).
+
+Online/offline is one rule everywhere (`Agent::online()` / `offline()`, last
+heartbeat within 180 s), and "hari ini" counts from midnight WIB
+(`SecurityIncident::today()`); the app timezone is UTC.
+
 ### Finding status follows the scanner
 
 Every status change, by staff or by a scanner, goes through

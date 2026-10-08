@@ -41,6 +41,13 @@ class Index extends Component
             'warning' => (clone $active)->where('severity', SecscanFinding::SEVERITY_WARNING)->count(),
             'open' => (clone $active)->where('status', SecscanFinding::STATUS_OPEN)->count(),
             'sites' => SecscanFinding::active()->distinct('db_name')->count('db_name'),
+            // Selesai, but the database scan still finds the content (usually
+            // a suspended cPanel account). Shown so the dirty databases are
+            // cleaned before an account is reactivated.
+            'still_in_db' => SecscanFinding::where('status', SecscanFinding::STATUS_RESOLVED)
+                ->where(fn ($q) => $q->whereNull('scan_source')->orWhere('scan_source', 'sql'))
+                ->whereColumn('last_detected_at', '>', 'resolved_at')
+                ->count(),
         ];
     }
 
@@ -48,13 +55,13 @@ class Index extends Component
     #[Computed]
     public function agentStats(): array
     {
-        $threeMinAgo = now()->subMinutes(3);
-
+        // Same online rule and same "today" (WIB) as the Agen page, so the
+        // two never show different numbers for the same thing.
         return [
             'total'           => Agent::count(),
-            'online'          => Agent::where('last_seen_at', '>=', $threeMinAgo)->count(),
-            'offline'         => Agent::whereNotNull('last_seen_at')->where('last_seen_at', '<', $threeMinAgo)->count(),
-            'critical_today'  => SecurityIncident::where('severity', 'critical')->whereDate('detected_at', today())->count(),
+            'online'          => Agent::online()->count(),
+            'offline'         => Agent::offline()->count(),
+            'critical_today'  => SecurityIncident::where('severity', SecurityIncident::SEVERITY_CRITICAL)->today()->count(),
         ];
     }
 

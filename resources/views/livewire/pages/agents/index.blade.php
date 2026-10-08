@@ -2,15 +2,15 @@
     <x-slot name="breadcrumb">
         <livewire:nawasara-ui.shared-components.breadcrumb
             :items="[
-                ['label' => 'Security Scan', 'url' => route('nawasara-secscan.dashboard')],
-                ['label' => 'Agents'],
+                ['label' => 'Keamanan', 'url' => route('nawasara-secscan.dashboard')],
+                ['label' => 'Agen'],
             ]" />
     </x-slot>
 
     <x-nawasara-ui::page.container>
         <x-nawasara-ui::page-header
-            title="Security Agents"
-            description="Daftar agent nawasara-agent yang ter-install di server">
+            title="Agen Keamanan"
+            description="Agen nawasara-agent yang terpasang di server. Agen yang servernya sudah tidak dipakai sebaiknya dicabut.">
         </x-nawasara-ui::page-header>
 
         <livewire:nawasara-secscan.agents.section.stats />
