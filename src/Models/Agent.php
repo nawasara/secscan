@@ -16,18 +16,28 @@ class Agent extends Model
         'agent_id', 'name', 'hostname', 'os', 'arch', 'agent_version',
         'web_server', 'ip_local', 'opd_id', 'api_key_hash', 'status',
         'health_score', 'plugins_active', 'last_seen_at', 'registered_at',
+        'approval_status', 'approved_by', 'approved_at', 'enrollment_token_id',
     ];
+
+    protected $hidden = ['api_key_hash'];
 
     protected $casts = [
         'plugins_active' => 'array',
         'last_seen_at'   => 'datetime',
         'registered_at'  => 'datetime',
+        'approved_at'    => 'datetime',
         'health_score'   => 'float',
     ];
 
     const STATUS_NEVER   = 'never_connected';
     const STATUS_ONLINE  = 'online';
     const STATUS_OFFLINE = 'offline';
+
+    // Persetujuan agen (audit keamanan 15 Oktober 2026, T1). Hanya agen
+    // `approved` yang insidennya masuk Decision Engine dan yang menerima
+    // perintah. Agen lama ditandai approved oleh migrasinya.
+    const APPROVAL_PENDING  = 'pending';
+    const APPROVAL_APPROVED = 'approved';
 
     // Offline if no heartbeat in last 3 minutes
     const OFFLINE_THRESHOLD_SECONDS = 180;
@@ -147,12 +157,40 @@ class Agent extends Model
         };
     }
 
-    public static function findByApiKey(string $rawKey): ?self
+    public function isApproved(): bool
     {
-        // Api key format: nwa_{32chars} — hash stored as bcrypt
-        return static::where('status', '!=', self::STATUS_NEVER)
-            ->get()
-            ->first(fn ($agent) => password_verify($rawKey, $agent->api_key_hash));
+        return $this->approval_status === self::APPROVAL_APPROVED && ! $this->trashed();
+    }
+
+    public function scopeApproved($query)
+    {
+        return $query->where('approval_status', self::APPROVAL_APPROVED);
+    }
+
+    /**
+     * Cari agen untuk satu permintaan API: WAJIB lewat agent_id, lalu satu
+     * password_verify terhadap baris itu saja.
+     *
+     * Audit keamanan 15 Oktober 2026 (T1): versi lama (findByApiKey) mencoba
+     * password_verify ke SETIAP agen bila X-Agent-Id tidak dikirim. Dengan
+     * ratusan agen palsu, satu permintaan memakan ratusan operasi bcrypt (DoS).
+     * Jalur itu tidak dibutuhkan: semua agen Go mengirim X-Agent-Id sejak
+     * reporter.go ed96e75 (1 Juli 2026), sehari setelah tabel ini dibuat,
+     * begitu pula executor dan scanner.
+     */
+    public static function authenticate(string $agentId, string $rawKey): ?self
+    {
+        if ($agentId === '' || $rawKey === '' || strlen($agentId) > 64 || strlen($rawKey) > 128) {
+            return null;
+        }
+
+        $agent = static::where('agent_id', $agentId)->first();
+
+        if (! $agent || ! password_verify($rawKey, (string) $agent->api_key_hash)) {
+            return null;
+        }
+
+        return $agent;
     }
 
     public static function generateApiKey(): string

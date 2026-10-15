@@ -14,6 +14,9 @@
         </x-nawasara-ui::page-header>
 
         <livewire:nawasara-secscan.agents.section.stats />
+        @can('secscan.agent.enroll')
+            <livewire:nawasara-secscan.agents.section.enrollment />
+        @endcan
         <livewire:nawasara-secscan.agents.section.table />
     </x-nawasara-ui::page.container>
 </div>

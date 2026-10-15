@@ -3,6 +3,7 @@
 namespace Nawasara\Secscan\Livewire\Agents\Section;
 
 use Livewire\Attributes\On;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\AgentScanFinding;
@@ -15,13 +16,18 @@ class ScanFindings extends Component
     use HasTimeWindow;
     use WithPagination;
 
+    // #[Locked]: hanya diisi server, browser tidak boleh mengubahnya
+    // (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public int $agentDbId;       // nawasara_agents.id (not the agent_id string)
     public string $filterStatus   = 'open';
     public string $filterSeverity = '';
     public string $filterCategory = '';
 
+    #[Locked]
     public ?int   $triageId   = null;
     public string $triageNote = '';
+    #[Locked]
     public string $triageAction = ''; // 'acknowledge' | 'resolve' | 'false_positive'
 
     public function mount(int $agentDbId): void

@@ -20,9 +20,11 @@ use Nawasara\Secscan\Support\IpWhitelist;
  * SAFETY-FIRST ordering:
  *
  *   Gate 0 — master enabled? (kill switch)
+ *   Gate 0b: reporting agent approved and not revoked? (audit 15 Okt 2026, T1)
  *   Gate 1 — WHITELIST (checked before anything else; fail-safe)
  *   Gate 2 — already blocked? (dedup, no double-block / API spam)
  *   Gate 3 — conservative threshold (blockable type AND score AND occurrences)
+ *   Gate 4: per-agent hourly block cap (audit 15 Okt 2026, T1)
  *
  * Only when all gates pass is the IP blocked. In dry_run the full pipeline
  * runs and a decision is recorded, but Cloudflare is NOT called — so operators
@@ -56,6 +58,18 @@ class DecisionEngine
             return $this->verdict('skip', 'no source ip', null);
         }
 
+        // Gate 0b: agen pelapor harus disetujui dan belum dicabut.
+        //
+        // Audit keamanan 15 Oktober 2026 (T1): siapa pun dapat mendaftarkan
+        // agen lalu mengirim insiden `score: 100` untuk IP sasaran. Kini
+        // pendaftaran butuh token, dan agen baru berstatus pending; insidennya
+        // tetap tercatat tetapi tidak pernah memicu blokir sampai disetujui.
+        // Dicek di sini juga (bukan hanya di controller) supaya jalur evaluasi
+        // lain, mis. job yang tertunda di antrean, tidak melewatinya.
+        if (! $this->agentTrusted($incident)) {
+            return $this->verdict('untrusted_agent', 'reporting agent not approved or revoked', $ip);
+        }
+
         // Gate 1 — WHITELIST first (fail-safe).
         $wl = IpWhitelist::check($ip);
         if ($wl['whitelisted']) {
@@ -84,6 +98,11 @@ class DecisionEngine
             // Gate 2 — already blocked? (this IP, from this or an earlier incident)
             if (IpBlock::active()->where('ip', $ip)->exists()) {
                 return $this->verdict('already', 'ip already blocked', $ip);
+            }
+
+            // Gate 4: batas blokir per agen per jam.
+            if ($this->agentBlockCapReached($incident)) {
+                return $this->verdict('agent_cap', 'agent hourly block cap reached', $ip);
             }
 
             // Decision: BLOCK.
@@ -134,6 +153,70 @@ class DecisionEngine
             : $minOcc;
 
         return (int) $incident->occurrences >= $required;
+    }
+
+    /**
+     * Agen pelapor sudah disetujui dan belum dicabut. Insiden tanpa agen
+     * (agent_id null) tidak berasal dari API agen dan dibiarkan lewat.
+     */
+    protected function agentTrusted(SecurityIncident $incident): bool
+    {
+        if ($incident->agent_id === null) {
+            return true;
+        }
+
+        $agent = $incident->agent; // relasi withTrashed: agen dicabut tetap terbaca
+
+        return $agent !== null && $agent->isApproved();
+    }
+
+    /**
+     * Batas jumlah blokir yang boleh dipicu satu agen dalam satu jam.
+     *
+     * Audit keamanan 15 Oktober 2026 (T1): bahkan agen yang sah dapat disusupi
+     * atau salah konfigurasi (mis. membaca IP dari X-Forwarded-For yang diisi
+     * penyerang) lalu meminta blokir massal di Cloudflare tingkat akun, yang
+     * berlaku untuk semua zona Pemkab. Batas ini membatasi kerusakannya, dan
+     * peringatan memberi tahu operator bahwa ada yang perlu diperiksa.
+     * Blokir dry-run ikut dihitung, supaya perilaku dry-run sama dengan nyata.
+     */
+    protected function agentBlockCapReached(SecurityIncident $incident): bool
+    {
+        $cap = (int) config('nawasara-secscan.autoblock.max_blocks_per_agent_per_hour', 30);
+        if ($cap <= 0 || $incident->agent_id === null) {
+            return false;
+        }
+
+        $recent = IpBlock::where('blocked_at', '>=', now()->subHour())
+            ->whereIn('incident_id', SecurityIncident::select('id')->where('agent_id', $incident->agent_id))
+            ->count();
+
+        if (! self::capReached($recent, $cap)) {
+            return false;
+        }
+
+        Log::warning('[secscan] DecisionEngine: agent hourly block cap reached', [
+            'agent_id' => $incident->agent_id, 'recent' => $recent, 'cap' => $cap, 'incident' => $incident->id,
+        ]);
+
+        try {
+            \Nawasara\Alerting\Facades\Alerter::fire(
+                'secscan.agent.block_cap',
+                'Agent',
+                (string) $incident->agent_id,
+                ['agent' => $incident->agent?->name, 'recent' => $recent, 'cap' => $cap],
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[secscan] block cap alert failed: '.$e->getMessage());
+        }
+
+        return true;
+    }
+
+    /** Logika murni, dipisah supaya dapat diuji tanpa basis data. */
+    public static function capReached(int $recentBlocks, int $cap): bool
+    {
+        return $cap > 0 && $recentBlocks >= $cap;
     }
 
     protected function doBlock(SecurityIncident $incident, string $ip): array

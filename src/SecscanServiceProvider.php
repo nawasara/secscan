@@ -209,6 +209,18 @@ class SecscanServiceProvider extends ServiceProvider
             'description' => 'IP penyerang otomatis di-block di Cloudflare edge oleh Decision Engine',
             'subject_template' => '[auto-block] IP {context.ip} di-block ({context.reason}, skor {context.score})',
         ]));
+
+        // Batas blokir per agen per jam tercapai (audit keamanan 15 Oktober
+        // 2026, T1). Bisa serangan besar yang sah, bisa juga agen disusupi;
+        // keduanya perlu dilihat manusia, jadi critical dengan jeda 1 jam.
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => 'secscan.agent.block_cap',
+            'severity' => 'critical',
+            'category' => 'security',
+            'cooldown_minutes' => 60,
+            'description' => 'Satu agen memicu terlalu banyak blokir IP dalam satu jam; blokir berikutnya ditahan',
+            'subject_template' => '[auto-block] Agen {context.agent} mencapai batas {context.cap} blokir/jam',
+        ]));
     }
 
     /**

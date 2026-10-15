@@ -53,12 +53,15 @@
                             </x-nawasara-ui::badge>
                         </td>
                         <td class="px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400">
+                            @if ($cmd->createdBy)
+                                <div>Diterbitkan: {{ $cmd->createdBy->name }}</div>
+                            @endif
                             @if ($cmd->approvedBy)
-                                {{ $cmd->approvedBy->name }}
+                                <div>Disetujui: {{ $cmd->approvedBy->name }}</div>
                             @elseif ($cmd->rejectedBy)
-                                <span class="text-rose-600 dark:text-rose-400">{{ $cmd->rejectedBy->name }}</span>
-                            @else
-                                <span class="text-neutral-400 dark:text-neutral-500">—</span>
+                                <div class="text-rose-600 dark:text-rose-400">Ditolak: {{ $cmd->rejectedBy->name }}</div>
+                            @elseif (! $cmd->createdBy)
+                                <span class="text-neutral-400 dark:text-neutral-500">-</span>
                             @endif
                         </td>
                         <td class="px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
@@ -73,13 +76,23 @@
                         <td class="px-4 py-3">
                             @if ($cmd->isPending())
                                 <div class="flex items-center gap-1.5 justify-end">
-                                    <x-nawasara-ui::button
-                                        color="success"
-                                        size="xs"
-                                        wire:click="approve({{ $cmd->id }})"
-                                        wire:loading.attr="disabled">
-                                        Setujui
-                                    </x-nawasara-ui::button>
+                                    {{-- Penerbit tidak boleh menyetujui perintahnya sendiri
+                                         (audit keamanan 15 Oktober 2026, R7). Server tetap
+                                         memeriksanya; ini hanya agar tombolnya tidak menipu. --}}
+                                    @can('secscan.agent.command.approve')
+                                        @if (config('nawasara-secscan.agent.commands_allow_self_approve', false)
+                                            || ! \Nawasara\Secscan\Livewire\Agents\Section\Commands::isSelfApproval($cmd->created_by, auth()->id()))
+                                            <x-nawasara-ui::button
+                                                color="success"
+                                                size="xs"
+                                                wire:click="approve({{ $cmd->id }})"
+                                                wire:loading.attr="disabled">
+                                                Setujui
+                                            </x-nawasara-ui::button>
+                                        @else
+                                            <span class="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">Menunggu admin lain</span>
+                                        @endif
+                                    @endcan
                                     <x-nawasara-ui::button
                                         color="danger"
                                         size="xs"

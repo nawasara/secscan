@@ -60,6 +60,33 @@ class Table extends Component
             .($cancelled > 0 ? ", {$cancelled} perintah tertahan dibatalkan." : '.'));
     }
 
+    /**
+     * Setujui agen yang baru mendaftar lewat token.
+     *
+     * Audit keamanan 15 Oktober 2026 (T1): sampai disetujui, insiden agen
+     * baru tersimpan tetapi tidak masuk Decision Engine dan agennya tidak
+     * menerima perintah. Sudo karena agen yang disetujui dapat memicu blokir
+     * IP di Cloudflare tingkat akun.
+     */
+    #[RequiresSudo(reason: 'menyetujui agen keamanan baru')]
+    public function approveAgent(int $id): void
+    {
+        $this->authorize('secscan.agent.enroll');
+
+        $agent = Agent::findOrFail($id);
+
+        if ($agent->approval_status !== Agent::APPROVAL_APPROVED) {
+            $agent->forceFill([
+                'approval_status' => Agent::APPROVAL_APPROVED,
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+            ])->save();
+        }
+
+        $this->dispatch('agent-registered');
+        $this->dispatch('toast', type: 'success', message: 'Agen '.$agent->name.' disetujui.');
+    }
+
     protected function filteredQuery(): Builder
     {
         $term = '%'.addcslashes($this->search, '\\%_').'%';
@@ -76,6 +103,7 @@ class Table extends Component
             ->when($this->filterStatus === 'online', fn ($q) => $q->online())
             ->when($this->filterStatus === 'offline', fn ($q) => $q->offline())
             ->when($this->filterStatus === Agent::STATUS_NEVER, fn ($q) => $q->where('status', Agent::STATUS_NEVER))
+            ->when($this->filterStatus === 'pending_approval', fn ($q) => $q->where('approval_status', '!=', Agent::APPROVAL_APPROVED))
             ->orderBy('last_seen_at', 'desc')
             ->orderBy('created_at', 'desc');
     }
@@ -102,6 +130,7 @@ class Table extends Component
                 'Web Server' => $a->web_server,
                 'IP Lokal' => $a->ip_local,
                 'Status' => $a->statusLabel(),
+                'Persetujuan' => $a->isApproved() ? 'Disetujui' : 'Menunggu persetujuan',
                 'Health' => $a->health_score,
                 'Plugins' => is_array($a->plugins_active) ? implode(', ', $a->plugins_active) : (string) $a->plugins_active,
                 'Insiden' => $a->incidents_count,

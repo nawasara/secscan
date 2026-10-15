@@ -192,15 +192,24 @@ scans for malicious files (webshell/backdoor), then reports to the dashboard.
 
 ## Quick way: one line (recommended)
 
-Run this on the target server as root:
+> **Enrollment token required (since the 15 October 2026 security audit, T1).**
+> `/api/agent/register` used to be open to anyone, and a self-registered agent
+> could make the Decision Engine block any IP on Cloudflare. Now an admin with
+> `secscan.agent.enroll` creates a one-time token on the Agents page
+> (**Buat Token**, needs sudo; valid 1 hour to 7 days). The new agent then sits
+> in **Menunggu persetujuan** until an admin approves it from the row menu:
+> its incidents are stored but never trigger a block, and it receives no
+> commands.
+
+Run this on the target server, with the token from the Agents page:
 
 ```bash
-curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
+curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | sudo NAWASARA_ENROLLMENT_TOKEN=nwe_xxx bash
 ```
 
 The script automatically:
 1. Downloads the binary for the architecture (amd64/arm64)
-2. **Registers with the dashboard**, receiving `agent_id` plus `api_key` automatically
+2. **Registers with the dashboard** using the enrollment token, receiving `agent_id` plus `api_key`
 3. Writes the config (`/etc/nawasara-agent/config.yaml`, `chmod 600`)
 4. Installs the systemd service (`nawasara-agent run --config …`)
 5. Starts the service
@@ -220,7 +229,7 @@ No manual step is needed. Successful output:
 > from scratch, remove the config first:
 > ```bash
 > rm -f /etc/nawasara-agent/config.yaml
-> curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | bash
+> curl -sSL https://nawasara.ponorogo.go.id/agent/install.sh | sudo NAWASARA_ENROLLMENT_TOKEN=nwe_xxx bash
 > ```
 
 ## Verification
@@ -308,6 +317,7 @@ chmod +x /usr/local/bin/nawasara-agent
 ```bash
 curl -s -X POST https://nawasara.ponorogo.go.id/api/agent/register \
   -H 'Content-Type: application/json' \
+  -H 'X-Enrollment-Token: nwe_xxx' \
   -d "{\"name\":\"$(hostname)\",\"hostname\":\"$(hostname)\",\"os\":\"linux\",\"arch\":\"$(uname -m)\"}"
 ```
 
@@ -344,7 +354,11 @@ systemctl enable --now nawasara-agent
 
 ## Troubleshooting
 
-**Script stops at "Registration failed".** The registration endpoint is
+**Script stops at "Registration failed" with `401`.** The enrollment token is
+missing, expired, revoked, or already used (each token registers exactly one
+agent). Create a new one on the Agents page.
+
+**Script stops at "Registration failed" otherwise.** The registration endpoint is
 unreachable (a firewall or Cloudflare bot challenge is blocking curl from the
 VM). Test manually:
 
@@ -355,7 +369,8 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   -d '{"name":"t","hostname":"t","os":"linux","arch":"x86_64"}'
 ```
 
-It should be `201`. If it is `403` or times out, ask an admin to open the
+Without a token it should be `401` (reachable). Do not test with a real token:
+it would be consumed. If it is `403` or times out, ask an admin to open the
 `/agent/*` path from this server's IP in the Cloudflare WAF.
 
 **Log keeps saying "HTTP 403, buffering".** Reports are being rejected, and the
@@ -393,6 +408,7 @@ Download again after an admin confirms the release is available.
 - [ ] `systemctl status nawasara-agent` shows `active (running)`
 - [ ] Log has heartbeats, no repeated `403`
 - [ ] Server shows **online** in Security Scan → Agents
+- [ ] Agent **approved** (no "Menunggu persetujuan" badge), otherwise its incidents never trigger a block
 
 ---
 

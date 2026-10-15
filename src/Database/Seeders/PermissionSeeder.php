@@ -16,7 +16,15 @@ class PermissionSeeder extends Seeder
             'secscan.scan.execute',    // trigger a manual rescan
             'secscan.agent.view',      // view agent detail + incidents
             'secscan.agent.delete',    // remove/revoke agent registration
-            'secscan.agent.command',   // issue + approve/reject remote commands (Phase 2)
+            'secscan.agent.command',   // issue + reject remote commands (Phase 2)
+            // Audit keamanan 15 Oktober 2026 (R7): menyetujui perintah dipisah
+            // dari menerbitkannya, supaya peran yang boleh mengusulkan
+            // restart_mysql / block_ip tidak otomatis boleh mengeksekusinya.
+            'secscan.agent.command.approve',
+            // Audit keamanan 15 Oktober 2026 (T1): membuat token pendaftaran
+            // agen dan menyetujui agen baru. Agen yang disetujui dapat memicu
+            // blokir IP di Cloudflare, jadi ini izin tersendiri.
+            'secscan.agent.enroll',
             'secscan.agent.scan',      // triage file scanner findings (Phase 3)
             'secscan.export',          // export any secscan table (csv/xlsx/json)
             'secscan.ip-block.manage', // view IP blocks + manual unblock (Decision Engine)

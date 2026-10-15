@@ -2,6 +2,7 @@
 
 namespace Nawasara\Secscan\Livewire\Agents\Section;
 
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Nawasara\Secscan\Models\Agent;
@@ -20,6 +21,9 @@ class Incidents extends Component
     use HasTimeWindow;
     use WithPagination;
 
+    // #[Locked]: hanya diisi server, browser tidak boleh mengubahnya
+    // (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public int $agentDbId;
     public string $filterSeverity = '';
 

@@ -11,7 +11,7 @@ class AgentCommand extends Model
     protected $table = 'nawasara_agent_commands';
 
     protected $fillable = [
-        'command_id', 'agent_id', 'action', 'params', 'status',
+        'command_id', 'agent_id', 'action', 'params', 'status', 'created_by',
         'output', 'error',
         'approved_by', 'rejected_by', 'rejection_reason',
         'approved_at', 'rejected_at', 'sent_at', 'exec_at',
@@ -45,6 +45,12 @@ class AgentCommand extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class, 'agent_id');
+    }
+
+    /** Penerbit perintah; null untuk perintah lama dan perintah otomatis. */
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'created_by');
     }
 
     public function approvedBy(): BelongsTo

@@ -4,6 +4,7 @@ namespace Nawasara\Secscan\Livewire\Agents\Section;
 
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\AuthPrimitives\Attributes\RequiresSudo;
 use Nawasara\AuthPrimitives\Traits\WithSudo;
@@ -16,6 +17,10 @@ class Commands extends Component
     use HasExport;
     use WithSudo;
 
+    // #[Locked]: hanya diisi server (mount / openReject). Tanpa ini browser
+    // dapat mengganti agentId di payload Livewire dan menerbitkan perintah ke
+    // agen lain (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public string $agentId = '';
 
     // Issue command form
@@ -23,6 +28,7 @@ class Commands extends Component
     public string $paramIp = '';
 
     // Reject modal
+    #[Locked]
     public ?int $rejectingId = null;
     public string $rejectionReason = '';
 
@@ -30,6 +36,19 @@ class Commands extends Component
     {
         $this->agentId = $agentId;
         $this->authorize('secscan.agent.command');
+    }
+
+    /**
+     * Penerbit perintah tidak boleh menyetujui perintahnya sendiri.
+     *
+     * Audit keamanan 15 Oktober 2026 (R7): tanpa ini, "butuh persetujuan"
+     * untuk restart_mysql / block_ip hanya satu klik tambahan oleh orang yang
+     * sama. Perintah tanpa created_by (perintah lama, perintah otomatis dari
+     * Decision Engine) tidak terkena aturan ini.
+     */
+    public static function isSelfApproval(?int $createdBy, ?int $approverId): bool
+    {
+        return $createdBy !== null && $approverId !== null && $createdBy === $approverId;
     }
 
     #[Computed]
@@ -42,6 +61,7 @@ class Commands extends Component
     public function commands()
     {
         return AgentCommand::where('agent_id', $this->agent->id)
+            ->with(['createdBy', 'approvedBy', 'rejectedBy'])
             ->orderByDesc('created_at')
             ->limit(30)
             ->get();
@@ -57,6 +77,11 @@ class Commands extends Component
 
     public function issueCommand(): void
     {
+        // Gate di setiap aksi, bukan hanya mount() (audit keamanan
+        // 15 Oktober 2026, R7): izin dapat dicabut saat halaman masih
+        // terbuka, dan aksi Livewire dapat dipanggil langsung.
+        $this->authorize('secscan.agent.command');
+
         $this->validate([
             'action'   => 'required|in:block_ip,unblock_ip,restart_nginx,reload_nginx,restart_apache,reload_apache,restart_php_fpm,reload_php_fpm,restart_mysql,artisan_queue_restart,artisan_optimize_clear',
             'paramIp'  => 'nullable|ip',
@@ -71,8 +96,9 @@ class Commands extends Component
         AgentCommand::create([
             'agent_id' => $this->agent->id,
             'action'   => $this->action,
-            'params'   => $params ?: null,
-            'status'   => AgentCommand::STATUS_PENDING,
+            'params'     => $params ?: null,
+            'status'     => AgentCommand::STATUS_PENDING,
+            'created_by' => auth()->id(),
         ]);
 
         $this->reset('action', 'paramIp');
@@ -86,9 +112,27 @@ class Commands extends Component
     #[RequiresSudo(reason: 'menyetujui perintah eksekusi pada agent')]
     public function approve(int $id): void
     {
+        $this->authorize('secscan.agent.command.approve');
+
         $cmd = AgentCommand::where('id', $id)->where('agent_id', $this->agent->id)->firstOrFail();
 
         if (! $cmd->isPending()) {
+            return;
+        }
+
+        if (! config('nawasara-secscan.agent.commands_allow_self_approve', false)
+            && self::isSelfApproval($cmd->created_by, auth()->id())) {
+            $this->dispatch('toast', type: 'error',
+                message: 'Perintah yang Anda terbitkan sendiri harus disetujui admin lain.');
+
+            return;
+        }
+
+        // Agen yang belum disetujui tidak mengambil perintah apa pun; menyetujui
+        // perintahnya hanya menumpuk antrean yang tidak akan terkirim.
+        if (! $this->agent->isApproved()) {
+            $this->dispatch('toast', type: 'error', message: 'Agen ini belum disetujui.');
+
             return;
         }
 
@@ -105,6 +149,8 @@ class Commands extends Component
 
     public function openReject(int $id): void
     {
+        $this->authorize('secscan.agent.command');
+
         $this->rejectingId = $id;
         $this->rejectionReason = '';
         $this->dispatch('modal-open:modal-reject-command');
@@ -112,6 +158,10 @@ class Commands extends Component
 
     public function confirmReject(): void
     {
+        // Menolak adalah arah yang aman (perintah tidak jalan), jadi cukup
+        // izin menerbitkan; tetap diperiksa di sini, bukan hanya di mount().
+        $this->authorize('secscan.agent.command');
+
         $this->validate(['rejectionReason' => 'required|string|min:5|max:500']);
 
         $cmd = AgentCommand::where('id', $this->rejectingId)
@@ -119,7 +169,7 @@ class Commands extends Component
             ->firstOrFail();
 
         if (! $cmd->isPending()) {
-            $this->dispatch('modal-open:modal-reject-command');
+            $this->dispatch('modal-close:modal-reject-command');
             return;
         }
 
@@ -131,7 +181,7 @@ class Commands extends Component
         ]);
 
         $this->reset('rejectingId', 'rejectionReason');
-        $this->dispatch('modal-open:modal-reject-command');
+        $this->dispatch('modal-close:modal-reject-command');
         unset($this->commands);
         unset($this->pendingCount);
     }

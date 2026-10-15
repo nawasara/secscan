@@ -4,6 +4,7 @@ namespace Nawasara\Secscan\Livewire\Findings\Section;
 
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\Secscan\Models\SecscanFinding;
 use Nawasara\Secscan\Services\FindingTriage;
@@ -11,6 +12,9 @@ use Nawasara\Secscan\Services\FindingTriage;
 /** Detail + triage modal for one finding, opened from Section\Table. */
 class Detail extends Component
 {
+    // #[Locked]: hanya diisi server, browser tidak boleh mengubahnya
+    // (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public ?int $detailId = null;
 
     public string $triageReason = '';

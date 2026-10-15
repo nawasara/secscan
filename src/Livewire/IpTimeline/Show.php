@@ -3,6 +3,7 @@
 namespace Nawasara\Secscan\Livewire\IpTimeline;
 
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\Secscan\Models\IpBlock;
 use Nawasara\Secscan\Models\SecurityIncident;
@@ -13,6 +14,9 @@ class Show extends Component
 {
     use HasTimeWindow;
 
+    // #[Locked]: hanya diisi server, browser tidak boleh mengubahnya
+    // (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public string $ip = '';
 
     public function mount(string $ip): void

@@ -157,7 +157,11 @@ class WpInspector
                 "SELECT ID, post_title FROM {$table} WHERE post_status = 'publish' AND post_type IN ('post','page') AND post_title REGEXP ? LIMIT {$limit}",
                 [$regex]
             );
-            $base = rtrim($home, '/');
+            // Opsi `home` WordPress dapat diubah siapa pun yang menguasai situs
+            // itu, termasuk menjadi `javascript:...`. Audit keamanan
+            // 15 Oktober 2026 (R13): nilai ini dirender sebagai href di panel
+            // admin, jadi hanya http/https yang dipakai sebagai dasar tautan.
+            $base = self::safeBaseUrl($home);
             foreach ($rows as $r) {
                 $samples[] = [
                     'title' => mb_substr((string) $r->post_title, 0, 120),
@@ -303,5 +307,26 @@ class WpInspector
             'registration_burst' => $burst,
             'total_users' => $totalUsers,
         ];
+    }
+
+    /**
+     * Kembalikan $home tanpa garis miring akhir bila berupa URL http/https
+     * yang wajar, atau string kosong bila tidak (sehingga tautan contoh tidak
+     * dibentuk sama sekali). Lihat R13 pada audit keamanan 15 Oktober 2026.
+     */
+    public static function safeBaseUrl(string $home): string
+    {
+        $home = trim($home);
+        if ($home === '' || preg_match('/[\x00-\x20"\'<>`]/', $home)) {
+            return '';
+        }
+
+        $parts = parse_url($home);
+        if ($parts === false || empty($parts['host'])
+            || ! in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)) {
+            return '';
+        }
+
+        return rtrim($home, '/');
     }
 }

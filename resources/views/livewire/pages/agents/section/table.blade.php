@@ -5,12 +5,12 @@
                 <x-nawasara-ui::filter-panel
                     label="Filter"
                     :state="['filterStatus' => $filterStatus]"
-                    :labels="['filterStatus' => ['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum terhubung']]"
+                    :labels="['filterStatus' => ['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum terhubung', 'pending_approval' => 'Menunggu persetujuan']]"
                     :dimensions="['filterStatus' => 'Status']">
                     <x-nawasara-ui::filter-group
                         label="Status"
                         model="filterStatus"
-                        :items="['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum terhubung']"
+                        :items="['online' => 'Online', 'offline' => 'Offline', 'never_connected' => 'Belum terhubung', 'pending_approval' => 'Menunggu persetujuan']"
                         icon="lucide-activity" />
                 </x-nawasara-ui::filter-panel>
             </div>
@@ -39,7 +39,15 @@
         <x-slot:table>
             @forelse ($agents as $agent)
                 @php
+                    $items = [];
+                    // Agen baru menunggu persetujuan (audit keamanan 15 Oktober 2026, T1).
+                    if (! $agent->isApproved()) {
+                        $items[] = ['type' => 'click', 'label' => 'Setujui agen', 'wire:click' => 'approveAgent('.$agent->id.')',
+                            'icon' => 'lucide-shield-check', 'permission' => 'secscan.agent.enroll',
+                            'confirm' => 'Setujui agen '.$agent->name.'? Insidennya akan dapat memicu blokir IP otomatis.'];
+                    }
                     $items = [
+                        ...$items,
                         ['type' => 'link', 'label' => 'Detail agen', 'href' => route('nawasara-secscan.agents.show', $agent->agent_id),
                          'navigate' => true, 'icon' => 'lucide-external-link'],
                         ['type' => 'click', 'label' => 'Cabut agen', 'wire:click' => 'revoke('.$agent->id.')',
@@ -97,6 +105,11 @@
                     </td>
                     <td class="px-6 py-4">
                         <x-nawasara-ui::badge :color="$agent->statusColor()">{{ $agent->statusLabel() }}</x-nawasara-ui::badge>
+                        @unless ($agent->isApproved())
+                            <div class="mt-1">
+                                <x-nawasara-ui::badge color="warning" size="sm">Menunggu persetujuan</x-nawasara-ui::badge>
+                            </div>
+                        @endunless
                         @if ($agent->stuck_commands_count > 0)
                             <div class="mt-1 text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap"
                                 title="Perintah blokir yang sudah disetujui tetapi belum diambil agen">
@@ -127,7 +140,7 @@
                         @else
                             <x-nawasara-ui::empty-state inline icon="lucide-shield-off"
                                 title="Belum ada agen terdaftar"
-                                description="Pasang nawasara-agent di server target dan jalankan skrip registrasi." />
+                                description="Buat token pendaftaran di atas, lalu jalankan perintah pasang di server target." />
                         @endif
                     </td>
                 </tr>

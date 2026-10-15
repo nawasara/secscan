@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Nawasara\Secscan\Support\OutboundUrlGuard;
 
 /**
  * Lightweight HTTP fetcher for the F2 HTTP probe scanner.
@@ -77,12 +78,26 @@ class SiteHttpFetcher
         }
 
         // 5. Execute request
+        //
+        // Setiap lompatan, termasuk yang pertama, lewat OutboundUrlGuard dan
+        // alamat hasil resolve-nya disematkan ke curl. Audit keamanan
+        // 15 Oktober 2026 (R10): redirect dari situs yang disusupi tadinya
+        // diikuti ke 10.x / 127.0.0.1 / 169.254.169.254 tanpa pemeriksaan.
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => $ua,
-                'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language' => 'id-ID,id;q=0.9,en;q=0.8',
-            ])
+            $guard = OutboundUrlGuard::check($url);
+            if (! $guard['ok']) {
+                Log::warning('[secscan-http] url ditolak penjaga SSRF', ['url' => $url, 'reason' => $guard['reason']]);
+                $this->recordFailure($hostname);
+
+                return ['url' => $url, 'error' => 'blocked: '.$guard['reason'], 'status_code' => 0];
+            }
+
+            $response = $this->pinnedClient($guard)
+                ->withHeaders([
+                    'User-Agent' => $ua,
+                    'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language' => 'id-ID,id;q=0.9,en;q=0.8',
+                ])
                 ->timeout($this->timeoutSeconds)
                 ->withoutRedirecting()   // we track redirects manually below
                 ->get($url);
@@ -103,12 +118,26 @@ class SiteHttpFetcher
             while (in_array($current->status(), [301, 302, 303, 307, 308], true) && $hops < 3) {
                 $location = $current->header('Location');
                 if (! $location) break;
+                $location = OutboundUrlGuard::absolutize($location, $finalUrl);
                 $redirectChain[] = ['from' => $finalUrl, 'to' => $location, 'status' => $current->status()];
+
+                // Tujuan redirect tetap dicatat di rantai (bahan deteksi
+                // pembajakan redirect), tetapi TIDAK dihubungi bila skemanya
+                // bukan http/https atau alamatnya bukan publik.
+                $hopGuard = OutboundUrlGuard::check($location);
+                if (! $hopGuard['ok']) {
+                    Log::warning('[secscan-http] redirect ditolak penjaga SSRF', [
+                        'host' => $hostname, 'to' => $location, 'reason' => $hopGuard['reason'],
+                    ]);
+                    break;
+                }
+
                 $finalUrl = $location;
                 $hops++;
 
                 try {
-                    $current = Http::withHeaders(['User-Agent' => $ua])
+                    $current = $this->pinnedClient($hopGuard)
+                        ->withHeaders(['User-Agent' => $ua])
                         ->timeout($this->timeoutSeconds)
                         ->withoutRedirecting()
                         ->get($finalUrl);
@@ -180,6 +209,26 @@ class SiteHttpFetcher
         }
 
         return ['bot' => $bot, 'browser' => $browser, 'cloaking_detected' => $cloaking];
+    }
+
+    /**
+     * Klien HTTP yang memaksa curl memakai alamat yang sudah diperiksa
+     * OutboundUrlGuard (CURLOPT_RESOLVE), sehingga resolve ulang oleh curl
+     * tidak dapat dibelokkan ke alamat dalam (DNS rebinding).
+     *
+     * @param  array{host?: string, port?: int, ip?: string}  $guard
+     */
+    private function pinnedClient(array $guard): \Illuminate\Http\Client\PendingRequest
+    {
+        $options = [];
+
+        if (defined('CURLOPT_RESOLVE') && isset($guard['host'], $guard['port'], $guard['ip'])
+            && filter_var($guard['host'], FILTER_VALIDATE_IP) === false) {
+            $ip = str_contains($guard['ip'], ':') ? '['.$guard['ip'].']' : $guard['ip'];
+            $options['curl'] = [CURLOPT_RESOLVE => [$guard['host'].':'.$guard['port'].':'.$ip]];
+        }
+
+        return Http::withOptions($options);
     }
 
     // -------------------------------------------------------------------------

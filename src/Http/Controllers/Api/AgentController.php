@@ -6,9 +6,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\AgentCommand;
+use Nawasara\Secscan\Models\AgentEnrollmentToken;
 use Nawasara\Secscan\Models\AgentHeartbeat;
 use Nawasara\Secscan\Models\AgentScanFinding;
 use Nawasara\Secscan\Models\SecurityIncident;
@@ -18,9 +20,26 @@ class AgentController extends Controller
     /**
      * POST /api/agent/register
      * Called once during agent install. Returns the api_key (only time it's shown).
+     *
+     * Audit keamanan 15 Oktober 2026 (T1): pendaftaran WAJIB membawa token
+     * pendaftaran sekali pakai yang dibuat admin di halaman Agen (body
+     * `enrollment_token` atau header X-Enrollment-Token). Sebelumnya siapa pun
+     * di internet dapat mendaftar, lalu mengirim insiden palsu yang memblokir
+     * IP sembarang di Cloudflare. Agen hasil pendaftaran berstatus `pending`
+     * sampai disetujui admin; insidennya tersimpan tetapi tidak masuk
+     * Decision Engine.
      */
     public function register(Request $request): JsonResponse
     {
+        $rawToken = (string) ($request->header('X-Enrollment-Token') ?? $request->input('enrollment_token', ''));
+
+        if ($rawToken === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enrollment token required. Create one in Nawasara > Keamanan > Agen > Token Pendaftaran.',
+            ], 401);
+        }
+
         $data = $request->validate([
             'name'          => 'required|string|max:100',
             'hostname'      => 'required|string|max:255',
@@ -31,21 +50,40 @@ class AgentController extends Controller
             'ip_local'      => 'nullable|ip',
         ]);
 
+        // Klaim token SESUDAH validasi payload, supaya payload yang salah
+        // tidak menghabiskan token sekali pakai.
+        $token = AgentEnrollmentToken::claim($rawToken, $request->ip());
+        if (! $token) {
+            Log::warning('[secscan] agent register rejected: invalid enrollment token', [
+                'ip' => $request->ip(), 'hostname' => $data['hostname'],
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Enrollment token invalid, expired, or already used.',
+            ], 401);
+        }
+
         $rawKey = Agent::generateApiKey();
 
         $agent = Agent::create([
             ...$data,
-            'agent_id'      => Str::random(32),
-            'api_key_hash'  => password_hash($rawKey, PASSWORD_BCRYPT),
-            'status'        => Agent::STATUS_NEVER,
-            'registered_at' => now(),
+            'agent_id'            => Str::random(32),
+            'api_key_hash'        => password_hash($rawKey, PASSWORD_BCRYPT),
+            'status'              => Agent::STATUS_NEVER,
+            'approval_status'     => Agent::APPROVAL_PENDING,
+            'enrollment_token_id' => $token->id,
+            'registered_at'       => now(),
         ]);
+
+        $token->forceFill(['used_by_agent_id' => $agent->id])->save();
 
         return response()->json([
             'success'  => true,
             'agent_id' => $agent->agent_id,
             'api_key'  => $rawKey, // only returned once — agent must store it
-            'message'  => 'Agent registered. Store your api_key securely — it will not be shown again.',
+            'approval' => $agent->approval_status,
+            'message'  => 'Agent registered and waiting for approval in the dashboard. Store your api_key securely, it will not be shown again.',
         ], 201);
     }
 
@@ -65,7 +103,9 @@ class AgentController extends Controller
             'incidents.*.incident_id' => 'required|string|max:32',
             'incidents.*.type'        => 'required|string|max:64',
             'incidents.*.severity'    => 'required|in:info,medium,high,critical',
-            'incidents.*.source_ip'   => 'nullable|string|max:45',
+            // Diperiksa sebagai IP per insiden di bawah, bukan dengan aturan
+            // `ip` di sini. Lihat alasannya di sana.
+            'incidents.*.source_ip'   => 'nullable|string|max:64',
             'incidents.*.score'       => 'required|integer|min:0|max:100',
             'incidents.*.evidence'        => 'required|array',
             'incidents.*.detected_at'     => 'required|date',
@@ -96,10 +136,37 @@ class AgentController extends Controller
             // pembacaan jam yang salah — tetapi tidak ada yang terlihat rusak,
             // sehingga dugaan pertama selalu tertuju pada Cloudflare.
             $detectedAt = \Carbon\Carbon::parse($inc['detected_at'])->utc();
-            $sourceIp   = $inc['source_ip'] ?: null;
+
+            // source_ip harus IP yang sah (audit keamanan 15 Oktober 2026, T1):
+            // nilai ini berakhir sebagai aturan blokir Cloudflare.
+            //
+            // Sengaja TIDAK memakai aturan validasi `ip` untuk seluruh batch.
+            // Kolektor caddy/traefik mengambil IP dari X-Forwarded-For, yang
+            // diisi bebas oleh penyerang. Satu nilai sampah akan membuat
+            // seluruh batch dijawab 422, agen menyimpannya di buffer dan terus
+            // mengulang, dan insiden asli di batch yang sama tidak pernah
+            // sampai: penyerang dapat membutakan agen dengan satu header.
+            // Nilai yang bukan IP dijadikan null (insiden tetap tercatat,
+            // tetapi tidak dapat memicu blokir), dan nilai mentahnya disimpan
+            // di metadata untuk ditelusuri.
+            $rawSourceIp = trim((string) ($inc['source_ip'] ?? ''));
+            $sourceIp    = filter_var($rawSourceIp, FILTER_VALIDATE_IP) !== false ? $rawSourceIp : null;
+            if ($rawSourceIp !== '' && $sourceIp === null) {
+                $inc['metadata'] = array_merge((array) ($inc['metadata'] ?? []), [
+                    'source_ip_invalid' => mb_substr($rawSourceIp, 0, 64),
+                ]);
+            }
 
             // Exact re-send: deterministic scanner IDs or retried buffered batches.
-            $existing = SecurityIncident::where('incident_id', $inc['incident_id'])->first();
+            //
+            // Dibatasi ke agen pemanggil (audit keamanan 15 Oktober 2026, T1):
+            // pencarian global membuat satu agen dapat menyuntikkan bukti dan
+            // menaikkan `occurrences` insiden milik agen lain, sampai melewati
+            // ambang blokir.
+            $scopedIncidentId = $this->agentScopedId($agent, $inc['incident_id']);
+            $existing = SecurityIncident::where('agent_id', $agent->id)
+                ->whereIn('incident_id', [$inc['incident_id'], $scopedIncidentId])
+                ->first();
 
             // Logical duplicate: an ongoing attack (same agent + type + source IP)
             // keeps crossing the agent threshold and re-emits with a fresh random
@@ -133,7 +200,9 @@ class AgentController extends Controller
             }
 
             $new = SecurityIncident::create([
-                'incident_id'     => $inc['incident_id'],
+                'incident_id'     => SecurityIncident::where('incident_id', $inc['incident_id'])->exists()
+                    ? $scopedIncidentId   // id sudah dipakai agen lain, lihat agentScopedId()
+                    : $inc['incident_id'],
                 'agent_id'        => $agent->id,
                 'type'            => $inc['type'],
                 'severity'        => $inc['severity'],
@@ -158,7 +227,11 @@ class AgentController extends Controller
 
         // Run the Decision Engine off the request path (auto-block evaluation).
         // Only dispatched when autoblock is enabled, to avoid queue noise.
-        if (config('nawasara-secscan.autoblock.enabled', false)) {
+        //
+        // Agen yang belum disetujui tidak dievaluasi sama sekali (audit
+        // keamanan 15 Oktober 2026, T1). DecisionEngine memeriksa hal yang
+        // sama sekali lagi, untuk jalur evaluasi lain.
+        if (config('nawasara-secscan.autoblock.enabled', false) && $agent->isApproved()) {
             foreach (array_unique($touchedIds) as $incidentId) {
                 \Nawasara\Secscan\Jobs\EvaluateIncidentJob::dispatch($incidentId);
             }
@@ -219,6 +292,12 @@ class AgentController extends Controller
         $agent = $this->resolveAgent($request);
         if (! $agent) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        // Agen yang belum disetujui tidak menerima perintah apa pun (audit
+        // keamanan 15 Oktober 2026, T1).
+        if (! $agent->isApproved()) {
+            return response()->json(['commands' => []]);
         }
 
         $commands = AgentCommand::where('agent_id', $agent->id)
@@ -321,7 +400,14 @@ class AgentController extends Controller
         // Deduplicate: exact finding_id (deterministic hash from agent ≥ 0.4),
         // then fall back to logical identity (same agent + path + signature) so
         // older agents that still send random IDs don't stack duplicate rows.
-        $existing = AgentScanFinding::where('finding_id', $data['finding_id'])->first()
+        //
+        // finding_id dibatasi ke agen pemanggil (audit keamanan 15 Oktober
+        // 2026, T1): tanpa itu agen lain dapat membuka kembali temuan yang
+        // sudah ditandai selesai milik agen mana pun.
+        $scopedFindingId = $this->agentScopedId($agent, $data['finding_id']);
+        $existing = AgentScanFinding::where('agent_id', $agent->id)
+                ->whereIn('finding_id', [$data['finding_id'], $scopedFindingId])
+                ->first()
             ?? AgentScanFinding::where('agent_id', $agent->id)
                 ->where('path', $data['path'])
                 ->where('signature_id', $data['signature_id'])
@@ -353,7 +439,9 @@ class AgentController extends Controller
         }
 
         AgentScanFinding::create([
-            'finding_id'      => $data['finding_id'],
+            'finding_id'      => AgentScanFinding::where('finding_id', $data['finding_id'])->exists()
+                ? $scopedFindingId   // id sudah dipakai agen lain, lihat agentScopedId()
+                : $data['finding_id'],
             'agent_id'        => $agent->id,
             'path'            => $data['path'],
             'signature_id'    => $data['signature_id'],
@@ -391,8 +479,11 @@ class AgentController extends Controller
         $script = <<<BASH
         #!/usr/bin/env bash
         # nawasara-agent installer
-        # Usage: curl -sSL {$dashboardUrl}/agent/install.sh | bash
+        # Usage (token pendaftaran dibuat di Nawasara > Keamanan > Agen):
+        #   curl -sSL {$dashboardUrl}/agent/install.sh | sudo NAWASARA_ENROLLMENT_TOKEN=nwe_xxx bash
         set -euo pipefail
+
+        ENROLLMENT_TOKEN="\${NAWASARA_ENROLLMENT_TOKEN:-}"
 
         DASHBOARD_URL="{$dashboardUrl}"
         GITHUB_REPO="{$repo}"
@@ -433,6 +524,18 @@ class AgentController extends Controller
         AGENT_ID=""
         API_KEY=""
         if [ ! -f "\${CONFIG_DIR}/config.yaml" ]; then
+            # Sejak audit keamanan 15 Oktober 2026 (T1) pendaftaran wajib
+            # membawa token sekali pakai dari panel.
+            if [ -z "\${ENROLLMENT_TOKEN}" ]; then
+                echo "!! NAWASARA_ENROLLMENT_TOKEN belum diisi."
+                echo "   Buat token di \${DASHBOARD_URL}/nawasara-secscan/agents (tombol Token Pendaftaran), lalu:"
+                echo "   curl -sSL \${DASHBOARD_URL}/agent/install.sh | sudo NAWASARA_ENROLLMENT_TOKEN=nwe_xxx bash"
+                exit 1
+            fi
+            case "\${ENROLLMENT_TOKEN}" in
+                nwe_*) ;;
+                *) echo "!! Token pendaftaran harus diawali nwe_."; exit 1 ;;
+            esac
             echo "==> Registering agent with dashboard..."
             HOSTNAME_VAL="\$(hostname)"
             OS_VAL="\$(uname -s | tr A-Z a-z)"
@@ -441,6 +544,7 @@ class AgentController extends Controller
 
             REG_RESPONSE="\$(curl -sS -X POST "\${DASHBOARD_URL}/api/agent/register" \\
                 -H 'Content-Type: application/json' \\
+                -H "X-Enrollment-Token: \${ENROLLMENT_TOKEN}" \\
                 -d "\${REG_PAYLOAD}")"
 
             # Extract agent_id + api_key from JSON without requiring jq.
@@ -453,7 +557,8 @@ class AgentController extends Controller
                 echo "!! Check that \${DASHBOARD_URL}/api/agent/register is reachable (firewall / Cloudflare)."
                 exit 1
             fi
-            echo "    Registered — agent_id: \${AGENT_ID}"
+            echo "    Registered - agent_id: \${AGENT_ID}"
+            echo "    Agen menunggu PERSETUJUAN admin di halaman Agen sebelum insidennya dapat memicu blokir."
 
             echo "==> Writing config to \${CONFIG_DIR}/config.yaml"
             cat > "\${CONFIG_DIR}/config.yaml" <<CONFIG
@@ -585,24 +690,41 @@ class AgentController extends Controller
         return redirect()->away($url);
     }
 
+    /**
+     * Id pengganti bila incident_id / finding_id kiriman agen sudah dipakai
+     * agen LAIN (kolomnya unik global).
+     *
+     * Sejak pencarian dibatasi ke agen pemanggil (audit keamanan 15 Oktober
+     * 2026, T1), tabrakan id tidak lagi berarti "baris yang sama". Contoh
+     * nyata: finding_id pemindai berkas adalah hash path + signature, jadi
+     * dua server dengan berkas yang sama di /var/www/html menghasilkan id
+     * yang sama. Tanpa id pengganti, INSERT kedua gagal karena indeks unik,
+     * batch dijawab 500, dan agen mengulangnya tanpa akhir.
+     */
+    protected function agentScopedId(Agent $agent, string $id): string
+    {
+        return 'a'.substr(hash('sha256', $agent->agent_id.'|'.$id), 0, 31);
+    }
+
+    /**
+     * Autentikasi agen: X-Agent-Id + X-Agent-Key, keduanya WAJIB.
+     *
+     * Audit keamanan 15 Oktober 2026 (T1): jalur tanpa X-Agent-Id dihapus.
+     * Jalur itu mencoba password_verify ke setiap agen (DoS bcrypt). Semua
+     * klien agen di repo (reporter, executor, scanner) sudah mengirim
+     * X-Agent-Id sejak 1 Juli 2026, jadi agen yang terpasang tidak terdampak.
+     * `agent_id` / `api_key` di body tetap diterima untuk klien lama berbasis
+     * curl.
+     */
     protected function resolveAgent(Request $request): ?Agent
     {
-        $rawKey = $request->header('X-Agent-Key') ?? $request->input('api_key');
-        if (! $rawKey) {
+        $rawKey  = (string) ($request->header('X-Agent-Key') ?? $request->input('api_key', ''));
+        $agentId = (string) ($request->header('X-Agent-Id') ?? $request->input('agent_id', ''));
+
+        if ($rawKey === '' || $agentId === '') {
             return null;
         }
 
-        // Agents table could be large — try find by agent_id hint first if sent
-        $agentId = $request->header('X-Agent-Id') ?? $request->input('agent_id');
-
-        if ($agentId) {
-            $agent = Agent::where('agent_id', $agentId)->first();
-            if ($agent && password_verify($rawKey, $agent->api_key_hash)) {
-                return $agent;
-            }
-            return null;
-        }
-
-        return Agent::findByApiKey($rawKey);
+        return Agent::authenticate($agentId, $rawKey);
     }
 }

@@ -4,6 +4,7 @@ namespace Nawasara\Secscan\Livewire\Agents;
 
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\Secscan\Models\Agent;
 use Nawasara\Secscan\Models\AgentCommand;
@@ -15,6 +16,9 @@ class Show extends Component
 {
     use HasExport;
 
+    // #[Locked]: hanya diisi server, browser tidak boleh mengubahnya
+    // (audit keamanan 15 Oktober 2026).
+    #[Locked]
     public string $agentId = '';
 
     /** Active detail tab: findings | incidents | commands. */

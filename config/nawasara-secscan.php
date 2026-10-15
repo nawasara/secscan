@@ -239,6 +239,14 @@ return [
         // SEO isn't harmed. Verified by CIDR (coarse but safe).
         'whitelist_search_bots' => true,
 
+        // --- Batas blokir per agen per jam (audit keamanan 15 Okt 2026, T1) ---
+        // Agen yang disusupi atau salah konfigurasi tidak boleh dapat memicu
+        // blokir massal di Cloudflare tingkat akun. Saat batas tercapai,
+        // blokir berikutnya dilewati dan peringatan secscan.agent.block_cap
+        // dikirim. Produksi rata-rata beberapa blokir per hari, jadi 30 per jam
+        // jauh di atas pemakaian normal. 0 = tanpa batas.
+        'max_blocks_per_agent_per_hour' => (int) env('SECSCAN_AUTOBLOCK_MAX_PER_AGENT_HOUR', 30),
+
         // CF IP Access Rule notes tag prefix (for audit + bulk cleanup).
         'notes_prefix' => 'nawasara-autoblock',
     ],
@@ -260,6 +268,18 @@ return [
 
         // Max evidence entries kept per incident when aggregating (newest win).
         'incident_evidence_cap' => env('SECSCAN_INCIDENT_EVIDENCE_CAP', 20),
+
+        // Masa berlaku bawaan token pendaftaran agen (jam). Audit keamanan
+        // 15 Oktober 2026 (T1): token sekali pakai, dibuat admin di halaman
+        // Agen. Pendek, karena token hanya perlu hidup selama instalasi.
+        'enrollment_token_ttl_hours' => (int) env('SECSCAN_AGENT_ENROLLMENT_TTL_HOURS', 24),
+
+        // Izinkan penerbit perintah agen menyetujui perintahnya sendiri.
+        // Audit keamanan 15 Oktober 2026 (R7): bawaannya false, supaya
+        // persetujuan berarti dua orang. Nyalakan hanya bila tim memang
+        // tinggal satu admin; tindakannya tetap tercatat (created_by dan
+        // approved_by sama).
+        'commands_allow_self_approve' => (bool) env('SECSCAN_AGENT_COMMAND_SELF_APPROVE', false),
     ],
 
     /*

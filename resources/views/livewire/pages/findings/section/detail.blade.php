@@ -83,7 +83,10 @@
                                 @foreach ($ev['samples'] as $s)
                                     <li class="text-sm">
                                         <div class="text-neutral-800 dark:text-neutral-100 truncate">{{ $s['title'] ?? '-' }}</div>
-                                        @if (! empty($s['url']))
+                                        {{-- Hanya http/https yang menjadi href: temuan lama dapat
+                                             menyimpan URL dari opsi `home` WordPress yang diubah
+                                             penyerang (audit keamanan 15 Oktober 2026, R13). --}}
+                                        @if (! empty($s['url']) && preg_match('#^https?://#i', (string) $s['url']))
                                             <a href="{{ $s['url'] }}" target="_blank" rel="noopener noreferrer"
                                                 class="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline break-all">
                                                 <x-lucide-external-link class="size-3 shrink-0" />
