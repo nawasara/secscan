@@ -13,7 +13,7 @@ class AgentScanFinding extends Model
     protected $fillable = [
         'finding_id', 'agent_id',
         'path', 'signature_id', 'mitre_technique', 'sig_name', 'category', 'severity', 'score',
-        'description', 'matched_line',
+        'description', 'matched_line', 'matched_context', 'context_start_line', 'match_line',
         'file_size', 'file_mtime',
         'status', 'triaged_by', 'triaged_at', 'triage_note',
         'detected_at', 'last_seen_at',
@@ -39,6 +39,27 @@ class AgentScanFinding extends Model
     public function triagedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'triaged_by');
+    }
+
+    /**
+     * Code context as numbered lines for the "Lihat kode" modal.
+     *
+     * @return list<array{no:int, text:string, match:bool}>
+     */
+    public function codeLines(): array
+    {
+        if ($this->matched_context === null || $this->matched_context === '') {
+            return [];
+        }
+
+        $start = max(1, (int) $this->context_start_line);
+        $lines = [];
+        foreach (explode("\n", $this->matched_context) as $i => $text) {
+            $no = $start + $i;
+            $lines[] = ['no' => $no, 'text' => $text, 'match' => $no === (int) $this->match_line];
+        }
+
+        return $lines;
     }
 
     public function mitreName(): ?string

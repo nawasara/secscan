@@ -30,6 +30,29 @@ class ScanFindings extends Component
     #[Locked]
     public string $triageAction = ''; // 'acknowledge' | 'resolve' | 'false_positive'
 
+    /** Finding shown in the "Lihat kode" modal. */
+    #[Locked]
+    public ?int $viewId = null;
+
+    public function viewCode(int $id): void
+    {
+        $this->authorize('secscan.agent.view');
+
+        // Scoped to this agent: the id comes from the browser.
+        $this->viewId = AgentScanFinding::where('id', $id)
+            ->where('agent_id', $this->agentDbId)
+            ->value('id');
+
+        $this->dispatch('modal-open:scan-code-'.$this->agentDbId);
+    }
+
+    public function viewedFinding(): ?AgentScanFinding
+    {
+        return $this->viewId
+            ? AgentScanFinding::where('id', $this->viewId)->where('agent_id', $this->agentDbId)->first()
+            : null;
+    }
+
     public function mount(int $agentDbId): void
     {
         $this->agentDbId = $agentDbId;
@@ -150,6 +173,7 @@ class ScanFindings extends Component
         return view('nawasara-secscan::livewire.pages.agents.section.scan-findings', [
             'findings' => $this->findings(),
             'stats'    => $this->stats(),
+            'viewed'   => $this->viewedFinding(),
         ]);
     }
 }

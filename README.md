@@ -137,6 +137,27 @@ yang dibaca. Keputusan yang sebaiknya tidak dibatalkan:
   membersihkannya pengelola situs OPD, bukan admin jaringan. Webshell
   (`secscan.file.malicious`) tetap di Kritis.
 
+### "Lihat kode" pada temuan berkas agen
+
+Agen ≥ v0.13.0 mengirim ±15 baris di sekitar temuan (maks 300 byte per baris,
+4 KB total) beserta nomor barisnya; dasbor menampilkannya di menu ⋯ →
+**Lihat kode**. Sebagian besar temuan (plugin yang menulis `index.php`-nya
+sendiri, JS termampatkan) dapat diputuskan *false positive* dalam hitungan
+detik tanpa SSH.
+
+Dua keputusan yang jangan dibatalkan:
+
+- **Konteks diambil saat deteksi, bukan dibaca sesuai permintaan.** Tombol
+  "buka berkas" yang menyuruh agen membaca berkas apa pun akan menjadikan agen
+  pembaca berkas jarak jauh: siapa pun yang membobol dasbor dapat menarik
+  setiap `wp-config.php` di setiap server.
+- **Kredensial disamarkan DI AGEN**, sebelum keluar dari host (`define()`
+  kunci/sandi, baris `.env`, array `password =>`, `$db_pass = ...`). Dasbor
+  tidak pernah menerima nilainya, jadi tidak ada yang perlu disaring di sini.
+
+Temuan dari agen lama hanya punya potongan 120 karakter; modal menampilkannya
+dengan catatan untuk memperbarui agen.
+
 Yang **masih** belum tertangkap: cloaking berbasis IP Googlebot asli (reverse
 DNS) dan konten yang disisipkan JavaScript sesudah halaman dimuat — yang
 kedua butuh browser headless (lihat Roadmap F4).

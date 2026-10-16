@@ -120,6 +120,7 @@
                         <td class="px-4 py-3 text-right">
                             @php
                                 $triageItems = [];
+                                $triageItems[] = ['type' => 'click', 'label' => 'Lihat kode', 'wire:click' => "viewCode({$finding->id})", 'modal' => 'scan-code-'.$agentDbId, 'icon' => 'lucide-file-code'];
                                 if ($finding->isOpen()) {
                                     $triageItems[] = ['type' => 'click', 'label' => 'Acknowledge', 'wire:click' => "openTriage({$finding->id}, 'acknowledge')", 'modal' => 'scan-triage-'.$agentDbId, 'icon' => 'lucide-check'];
                                     $triageItems[] = ['type' => 'click', 'label' => 'False Positive', 'wire:click' => "openTriage({$finding->id}, 'false_positive')", 'modal' => 'scan-triage-'.$agentDbId, 'icon' => 'lucide-shield-off'];
@@ -143,6 +144,67 @@
             {{ $findings->links() }}
         </div>
     @endif
+
+    {{-- Code context modal — konteks dikirim agen >= v0.13.0, kredensial sudah disamarkan di agen --}}
+    <x-nawasara-ui::modal :id="'scan-code-' . $agentDbId" title="Kode Terindikasi" maxWidth="3xl">
+        @if ($viewed)
+            <div class="space-y-3">
+                <div>
+                    <div class="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                        {{ $viewed->sig_name }}
+                        <span class="ml-1 text-xs font-mono text-neutral-500 dark:text-neutral-400">{{ $viewed->signature_id }}</span>
+                    </div>
+                    <div class="mt-1 font-mono text-xs text-neutral-700 dark:text-neutral-200 break-all">{{ $viewed->path }}</div>
+                    <div class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                        @if ($viewed->match_line) Baris {{ $viewed->match_line }} · @endif
+                        @if ($viewed->file_size) {{ number_format($viewed->file_size / 1024, 1, ',', '.') }} KB · @endif
+                        Diubah {{ $viewed->file_mtime?->format('d M Y H:i') ?? '—' }}
+                    </div>
+                </div>
+
+                @php $lines = $viewed->codeLines(); @endphp
+                @if ($lines !== [])
+                    <div x-data="{ copied: false, raw: @js($viewed->matched_context) }" class="relative">
+                        <button type="button"
+                            x-on:click="navigator.clipboard.writeText(raw); copied = true; setTimeout(() => copied = false, 1500)"
+                            class="absolute right-2 top-2 z-10 rounded-md px-2 py-1 text-xs bg-white/90 text-neutral-600 border border-gray-200 hover:bg-gray-50 dark:bg-neutral-800/90 dark:text-neutral-300 dark:border-neutral-700 dark:hover:bg-neutral-700">
+                            <span x-show="!copied">Salin</span><span x-show="copied" x-cloak>Tersalin</span>
+                        </button>
+                        <div class="max-h-[60vh] overflow-auto rounded-lg border border-gray-200 bg-gray-50 dark:border-neutral-700 dark:bg-neutral-900">
+                            <table class="w-full font-mono text-xs leading-relaxed">
+                                <tbody>
+                                    @foreach ($lines as $line)
+                                        <tr class="{{ $line['match'] ? 'bg-rose-100 dark:bg-rose-900/40' : '' }}">
+                                            <td class="select-none px-3 text-right align-top text-neutral-400 dark:text-neutral-500 border-r border-gray-200 dark:border-neutral-700">{{ $line['no'] }}</td>
+                                            <td class="px-3 whitespace-pre text-neutral-800 dark:text-neutral-200">{{ $line['text'] }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                        Hingga 15 baris di sekitar temuan, diambil agen saat memindai. Nilai kata sandi, kunci, dan token disamarkan sebelum dikirim.
+                    </p>
+                @elseif ($viewed->matched_line)
+                    <pre class="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs whitespace-pre-wrap break-all text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">{{ $viewed->matched_line }}</pre>
+                    <p class="text-xs text-amber-700 dark:text-amber-400">
+                        Hanya potongan yang cocok yang tersedia. Konteks baris dikirim agen versi 0.13.0 ke atas — perbarui agen ini lalu tunggu pemindaian berikutnya.
+                    </p>
+                @else
+                    <p class="text-sm text-neutral-600 dark:text-neutral-300">{{ $viewed->description ?: 'Temuan integritas berkas tidak membawa potongan kode — hanya perubahan hash.' }}</p>
+                @endif
+            </div>
+        @else
+            <x-nawasara-ui::loading />
+        @endif
+
+        <x-slot:footer>
+            <x-nawasara-ui::button color="neutral" x-on:click="$dispatch('close-modal', 'scan-code-{{ $agentDbId }}')">
+                Tutup
+            </x-nawasara-ui::button>
+        </x-slot:footer>
+    </x-nawasara-ui::modal>
 
     {{-- Triage modal --}}
     <x-nawasara-ui::modal :id="'scan-triage-' . $agentDbId" title="Triage Finding">

@@ -388,6 +388,11 @@ class AgentController extends Controller
             'description'     => 'nullable|string|max:1024',
             'mitre_technique' => 'nullable|string|max:16',
             'matched_line'    => 'nullable|string|max:512',
+            // Agent >= v0.13.0: lines around the match, credentials redacted
+            // agent-side. 8192 leaves room for multibyte text over its 4 KB cap.
+            'context'            => 'nullable|string|max:8192',
+            'context_start_line' => 'nullable|integer|min:0',
+            'match_line'         => 'nullable|integer|min:0',
             'file_size'       => 'nullable|integer|min:0',
             'file_mtime'      => 'nullable|integer',  // unix timestamp
             'detected_at'     => 'nullable|integer',  // unix timestamp
@@ -431,6 +436,9 @@ class AgentController extends Controller
                 'score'        => max($existing->score, $data['score']),
                 'description'  => $data['description'] ?? $existing->description,
                 'matched_line' => $data['matched_line'] ?? $existing->matched_line,
+                'matched_context'    => $data['context'] ?? $existing->matched_context,
+                'context_start_line' => $data['context_start_line'] ?? $existing->context_start_line,
+                'match_line'         => $data['match_line'] ?? $existing->match_line,
                 'file_size'    => $data['file_size'] ?? $existing->file_size,
                 'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : $existing->file_mtime,
             ];
@@ -462,6 +470,9 @@ class AgentController extends Controller
             'score'           => $data['score'],
             'description'     => $data['description'] ?? null,
             'matched_line'    => $data['matched_line'] ?? null,
+            'matched_context'    => $data['context'] ?? null,
+            'context_start_line' => $data['context_start_line'] ?? null,
+            'match_line'         => $data['match_line'] ?? null,
             'file_size'    => $data['file_size'] ?? null,
             'file_mtime'   => isset($data['file_mtime']) ? \Carbon\Carbon::createFromTimestamp($data['file_mtime']) : null,
             'status'       => AgentScanFinding::STATUS_OPEN,
