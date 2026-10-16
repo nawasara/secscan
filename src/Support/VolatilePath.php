@@ -7,9 +7,10 @@ namespace Nawasara\Secscan\Support;
  * compiled templates. Integrity changes there are noise.
  *
  * Mirrors internal/scanner/volatile.go in nawasara/agent; keep the two lists
- * in step. Measured on alpine (October 2026): 29,150 of 29,856 open findings
- * were integrity changes, nearly all WP Super Cache pages and daily log files,
- * and the 131 real judol findings were buried among them for three months.
+ * in step. Measured on alpine (16 Oct 2026): of 29,263 open integrity findings
+ * only 1,818 were caches/logs. The bulk (27,445) are WordPress core and plugin
+ * files changed by updates — deliberately NOT skipped here, since that is
+ * where backdoors go; telling them apart needs WP checksums (README roadmap).
  */
 class VolatilePath
 {

@@ -110,11 +110,16 @@ yang dibaca. Keputusan yang sebaiknya tidak dibatalkan:
   mati, pengingat harian hanya kebisingan. Barisnya tetap terbuka supaya
   pembersihan berkas tidak terlupa.
 - **Integritas berkas cache/log tidak dicatat** (`Support\VolatilePath`,
-  cerminan `internal/scanner/volatile.go` di agen — jaga keduanya sama). Di
-  alpine 29.150 dari 29.856 temuan terbuka adalah perubahan WP Super Cache dan
-  log harian, dan temuan judol yang benar tenggelam di antaranya. Pemindaian
-  *signature* tetap berjalan di path itu: judol yang ditaruh di folder cache
-  tetap tertangkap.
+  cerminan `internal/scanner/volatile.go` di agen — jaga keduanya sama).
+  Pemindaian *signature* tetap berjalan di path itu: judol yang ditaruh di
+  folder cache tetap tertangkap. Tetapi cache/log **bukan** sumber utama
+  kebisingan: dari 29.263 temuan integritas terbuka di alpine (diukur 16 Okt
+  2026) hanya 1.818 yang cache/log. **27.445 adalah berkas inti WordPress dan
+  plugin** (`wp-includes/js` 8.001, `wp-content/plugins` 6.562) yang berubah
+  bergelombang — 9.176 dalam satu hari pada 20 Agustus — yakni pembaruan WP.
+  Path itu sengaja TIDAK dilewati: di sanalah backdoor biasa disisipkan.
+  Penyelesaiannya adalah mencocokkan dengan checksum resmi WordPress
+  (`api.wordpress.org/core/checksums`) — lihat Roadmap.
 - **Beranda dibaca dua kali**: sebagai Googlebot dan sebagai ponsel yang
   datang dari Google (`Referer: google.com`). Cloaking judol menampilkan
   halaman bersih kepada yang mengetik URL dan menukarnya hanya untuk lalu
@@ -487,6 +492,10 @@ the `nawasara/agent` repo (linux/amd64 plus linux/arm64). The dashboard serves:
   Tahap 2, browser headless untuk konten yang disisipkan JavaScript, baru
   dibuat bila ada kasus nyata yang lolos dari tahap 1; Chromium butuh
   0,5–1 GB RAM untuk dirawat.
+- **Integritas WordPress dengan checksum resmi:** berkas `wp-includes` /
+  `wp-admin` yang cocok dengan checksum versi terpasang (dan plugin dari
+  `downloads.wordpress.org`) adalah pembaruan, bukan intrusi. Tanpa ini ~27 ribu
+  temuan integritas di alpine tidak dapat dibedakan dari backdoor.
 - **Search Console:** satu domain property `ponorogo.go.id` mencakup semua
   subdomain; kueri harian kata kunci judol menunjuk URL yang sudah terindeks.
   Gratis, data terlambat 2–3 hari. Kunci service account diblokir kebijakan
