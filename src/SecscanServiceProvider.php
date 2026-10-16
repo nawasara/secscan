@@ -187,6 +187,29 @@ class SecscanServiceProvider extends ServiceProvider
             'subject_template' => '[{severity}] {context.site_name} mencurigakan: {context.threat_type} (skor {context.score})',
         ]));
 
+        // Agent file-scanner findings, one alert per site (FileFindingAlerts).
+        // One-day cooldown: a judol page still there tomorrow deserves another
+        // reminder, but not on every agent scan (every 6 hours).
+        $fileCooldown = (int) config('nawasara-secscan.alerts.file_cooldown_minutes', 1440);
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => \Nawasara\Secscan\Services\FileFindingAlerts::RULE_SPAM,
+            'severity' => 'critical',
+            'category' => 'security',
+            'cooldown_minutes' => $fileCooldown,
+            'description' => 'Berkas spam judol / obat ilegal ditemukan di server situs',
+            'subject_template' => '[{severity}] Spam di {context.site}: {context.file_count} berkas ({context.signature})',
+        ]));
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => \Nawasara\Secscan\Services\FileFindingAlerts::RULE_MALICIOUS,
+            'severity' => 'critical',
+            'category' => 'security',
+            'cooldown_minutes' => $fileCooldown,
+            'description' => 'Webshell / backdoor ditemukan di server situs',
+            'subject_template' => '[{severity}] Webshell di {context.site}: {context.file_count} berkas ({context.signature})',
+        ]));
+
         // Fired by the Decision Engine when an attacker IP is auto-blocked at
         // the Cloudflare edge (or would be, in dry-run).
         Alerter::registerOrReplaceRule(AlertRule::make([

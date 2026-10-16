@@ -110,6 +110,18 @@ class CheckAgentHealthJob implements ShouldQueue
         if ($mati > 0) {
             Log::warning("[secscan] {$mati} agen berhenti melapor lebih dari {$ambang} menit");
         }
+
+        // Close file findings the agents no longer report (files deleted).
+        // Only live agents are considered; see FileFindingAlerts::resolveStale().
+        try {
+            $closed = app(\Nawasara\Secscan\Services\FileFindingAlerts::class)
+                ->resolveStale((int) config('nawasara-secscan.alerts.file_stale_hours', 30));
+            if ($closed > 0) {
+                Log::info("[secscan] {$closed} file findings auto-resolved (no longer reported)");
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

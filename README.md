@@ -83,6 +83,59 @@ Every status change, by staff or by a scanner, goes through
 - The page opens on **Terbuka + Diakui**. Diakui means someone is on it, not
   done, so it stays visible.
 
+### Deteksi konten situs: tiga lapis, dan apa yang tidak dilihat masing-masing
+
+Halaman judol "SLOT777 LOGIN" di `umum.ponorogo.go.id` (16 Oktober 2026)
+sampai ke hasil Google tanpa satu pun peringatan. Penelusurannya menemukan
+bahwa ketiga lapis buta terhadapnya, masing-masing karena alasan berbeda:
+
+| Lapis | Yang dibaca | Buta terhadap |
+|---|---|---|
+| Scan database (tiap jam) | Kolom konten DB di server DB yang dipantau | Berkas statis, route, DB di server lain |
+| Probe HTTP (tiap 6 jam) | `/` + path WP + beberapa URL sitemap | URL dalam yang tidak tertaut dan tidak ada di sitemap |
+| Agen, pemindai berkas (tiap 6 jam) | Berkas di `web_dirs` server ber-agen | **Server tanpa agen** — umum ada di Himalaya (.29), agennya hanya di alpine (.30) |
+
+Jadi menaikkan frekuensi cron **tidak** menolong; yang menentukan adalah apa
+yang dibaca. Keputusan yang sebaiknya tidak dibatalkan:
+
+- **Temuan berkas agen memicu alert, satu per situs** (`FileFindingAlerts`).
+  Sebelumnya `scanFinding` hanya menyimpan baris: 124 halaman judol di akun
+  Jambon terbuka sejak 14 Juli tanpa pemberitahuan. Satu alert per berkas
+  akan mengirim 124 pesan untuk satu kejadian. Kuncinya `agen:akar-situs`
+  supaya stabil antar-pemindaian; alert pulih otomatis saat berkas terakhir
+  situs itu ditangani, atau tidak dilaporkan lagi selama `file_stale_hours`
+  (30) oleh agen yang masih hidup. **Akun cPanel yang di-suspend tidak
+  di-alert** (dibaca dari `nawasara_whm_accounts`): Jambon di-suspend karena
+  "Indikasi judol" sementara 124 berkasnya masih di disk — situsnya sudah
+  mati, pengingat harian hanya kebisingan. Barisnya tetap terbuka supaya
+  pembersihan berkas tidak terlupa.
+- **Integritas berkas cache/log tidak dicatat** (`Support\VolatilePath`,
+  cerminan `internal/scanner/volatile.go` di agen — jaga keduanya sama). Di
+  alpine 29.150 dari 29.856 temuan terbuka adalah perubahan WP Super Cache dan
+  log harian, dan temuan judol yang benar tenggelam di antaranya. Pemindaian
+  *signature* tetap berjalan di path itu: judol yang ditaruh di folder cache
+  tetap tertangkap.
+- **Beranda dibaca dua kali**: sebagai Googlebot dan sebagai ponsel yang
+  datang dari Google (`Referer: google.com`). Cloaking judol menampilkan
+  halaman bersih kepada yang mengetik URL dan menukarnya hanya untuk lalu
+  lintas pencarian. Sinyal yang hanya terlihat oleh satu jenis pengunjung
+  diberi evidence `cloaking`. Pembanding *ukuran badan respons* (dulu
+  `fetchBoth()`, tidak pernah dipanggil) sengaja tidak dipakai — beranda
+  dinamis berubah ukuran tanpa cloaking apa pun.
+- **Slug sitemap diperiksa sebelum halamannya diambil.** Sitemap situs
+  pemerintah yang memuat `/slot-gacor-maxwin/` sudah merupakan bukti. "slot"
+  tanpa angka tidak dihitung: `slot-anggaran` adalah berita sungguhan.
+- **Path WordPress hanya untuk situs WordPress.** Memeriksa `/wp-login.php`
+  di situs Laravel hanya menghabiskan kuota harian host.
+- Alert konten (`secscan.site.*`, `secscan.file.spam`) masuk topik Telegram
+  **Spam & Konten Ilegal** (`topic_konten` di Vault), bukan Kritis: yang
+  membersihkannya pengelola situs OPD, bukan admin jaringan. Webshell
+  (`secscan.file.malicious`) tetap di Kritis.
+
+Yang **masih** belum tertangkap: cloaking berbasis IP Googlebot asli (reverse
+DNS) dan konten yang disisipkan JavaScript sesudah halaman dimuat — yang
+kedua butuh browser headless (lihat Roadmap F4).
+
 ---
 
 ## Setup (database scanner)
@@ -262,6 +315,7 @@ it only to adjust log paths or turn on the file scanner.
 | `scanner.scan_interval` | Scan interval (default `6h`) |
 | `scanner.web_dirs` | Web directories scanned when the scanner is active |
 | `scanner.watch_paths` | Paths watched for integrity changes (e.g. `.env`, `/etc/nginx`) |
+| `scanner.integrity_ignore` | Extra path substrings skipped by the integrity check (agent ≥ v0.12; caches/logs are built in) |
 
 **Config structure (example):**
 
@@ -428,6 +482,14 @@ the `nawasara/agent` repo (linux/amd64 plus linux/arm64). The dashboard serves:
 - **F1:** SQL signal detector plus findings plus triage UI plus alerts. Done.
 - **F2:** Host agent, with log collectors (nginx/ssh/laravel) plus incident reporting. Done.
 - **F3:** Agent file scanner, with webshell/backdoor signatures plus file integrity. Done.
-- **F4:** Live HTTP probe (cloaking, redirect-on-fetch) via sidecar.
+- **F4:** Cloaking. Tahap 1 selesai (v0.17): beranda dibaca sebagai Googlebot
+  dan sebagai ponsel dari Google, plus URL sitemap — PHP biasa, tanpa sidecar.
+  Tahap 2, browser headless untuk konten yang disisipkan JavaScript, baru
+  dibuat bila ada kasus nyata yang lolos dari tahap 1; Chromium butuh
+  0,5–1 GB RAM untuk dirawat.
+- **Search Console:** satu domain property `ponorogo.go.id` mencakup semua
+  subdomain; kueri harian kata kunci judol menunjuk URL yang sudah terindeks.
+  Gratis, data terlambat 2–3 hari. Kunci service account diblokir kebijakan
+  org GCP, jadi butuh OAuth refresh token.
 - **F5:** Auto-response, blocking a malicious source IP via the `nawasara/opnsense`
   firewall blocklist (`FirewallBlocklistService::block($ip)`).

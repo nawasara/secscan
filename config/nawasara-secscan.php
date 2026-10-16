@@ -141,7 +141,15 @@ return [
         'backoff_after_failures' => 3,
         'backoff_minutes' => 30,
         'max_body_kb' => 2048,
-        // WP-specific paths probed in addition to homepage
+        // Second reading of "/" as a phone arriving from Google. Judol cloakers
+        // show the clean page to direct visitors and swap it for search
+        // traffic only; Googlebot alone does not see that face.
+        'cloak_check' => env('SECSCAN_HTTP_CLOAK_CHECK', true),
+        // Sitemap URLs fetched per host per run (spam-looking slugs first,
+        // then newest). 0 disables the sitemap probe.
+        'sitemap_urls' => env('SECSCAN_HTTP_SITEMAP_URLS', 3),
+        'sitemap_cache_minutes' => 720,
+        // WP-specific paths, probed only when the homepage is WordPress
         'wp_paths' => [
             '/wp-login.php',
             '/wp-content/uploads/',
@@ -155,6 +163,15 @@ return [
     */
     'alerts' => [
         'cooldown_minutes' => env('SECSCAN_ALERT_COOLDOWN', 60),
+
+        // Agent file-scanner findings (judol, webshell) — one alert per site.
+        'file_cooldown_minutes' => env('SECSCAN_FILE_ALERT_COOLDOWN', 1440),
+
+        // File findings a live agent has not reported for this long are taken
+        // as deleted and auto-resolved. Agents scan every 6 hours; 30 hours
+        // leaves room for one or two slow or missed passes without closing a
+        // file that is still there.
+        'file_stale_hours' => env('SECSCAN_FILE_STALE_HOURS', 30),
     ],
 
     /*

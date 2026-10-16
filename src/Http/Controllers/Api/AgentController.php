@@ -393,6 +393,15 @@ class AgentController extends Controller
             'detected_at'     => 'nullable|integer',  // unix timestamp
         ]);
 
+        // Integrity changes on caches/logs are the application working, not an
+        // intrusion. Agents >= 0.12 skip them already; this covers older ones
+        // still in the field. Signature findings on the same paths still pass.
+        if ($data['category'] === 'integrity' && \Nawasara\Secscan\Support\VolatilePath::matches($data['path'])) {
+            $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
+
+            return response()->json(['success' => true, 'ignored' => true]);
+        }
+
         $seenAt = isset($data['detected_at'])
             ? \Carbon\Carbon::createFromTimestamp($data['detected_at'])
             : now();
@@ -434,11 +443,12 @@ class AgentController extends Controller
 
             $existing->update($updates);
             $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
+            $this->alertFileFinding($agent, $existing);
 
             return response()->json(['success' => true, 'updated' => true]);
         }
 
-        AgentScanFinding::create([
+        $finding = AgentScanFinding::create([
             'finding_id'      => AgentScanFinding::where('finding_id', $data['finding_id'])->exists()
                 ? $scopedFindingId   // id sudah dipakai agen lain, lihat agentScopedId()
                 : $data['finding_id'],
@@ -460,8 +470,23 @@ class AgentController extends Controller
         ]);
 
         $agent->update(['status' => Agent::STATUS_ONLINE, 'last_seen_at' => now()]);
+        $this->alertFileFinding($agent, $finding);
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Per-site alert for file findings (judol, webshell). An alerting failure
+     * must not answer the agent with a 500 — it would resend the same finding
+     * forever, while the row is already stored.
+     */
+    private function alertFileFinding(Agent $agent, AgentScanFinding $finding): void
+    {
+        try {
+            app(\Nawasara\Secscan\Services\FileFindingAlerts::class)->notify($agent, $finding);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

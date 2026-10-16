@@ -9,14 +9,16 @@ use Nawasara\Secscan\Models\SecscanFindingHistory;
 use Nawasara\Secscan\Services\FindingTriage;
 use Nawasara\Secscan\Services\HtmlSignalDetector;
 use Nawasara\Secscan\Services\SiteHttpFetcher;
+use Nawasara\Secscan\Services\SitemapProbe;
 use Nawasara\Sync\Jobs\AbstractSyncJob;
 
 /**
  * F2 HTTP probe scanner.
  *
  * Iterates all A/CNAME records from nawasara/cloudflare that resolve to
- * *.ponorogo.go.id, fetches the homepage (and a small set of high-risk paths)
- * with a Googlebot UA, runs HtmlSignalDetector, and upserts findings into
+ * *.ponorogo.go.id, reads each site as Googlebot and as a phone arriving from
+ * Google (cloaking), plus WordPress high-risk paths and a few sitemap URLs —
+ * see probeHost(). Runs HtmlSignalDetector and upserts findings into
  * nawasara_secscan_findings with scan_source='http'.
  *
  * Read-only against target sites — the only writes are to local secscan tables.
@@ -72,39 +74,21 @@ class ScanHttpJob extends AbstractSyncJob
                 break; // resume remaining hosts next scheduled run
             }
 
-            $pathsToScan = $this->pathsForHostname($hostname);
-
-            foreach ($pathsToScan as $path) {
-                $result = $fetcher->fetch($hostname, $path);
-
-                if ($result === null || ! empty($result['error'])) {
+            foreach ($this->probeHost($fetcher, $detector, $hostname) as $page) {
+                if ($page['skipped']) {
                     $skipped++;
                     continue;
                 }
-
-                if ($result['is_challenge'] ?? false) {
-                    $skipped++;
-                    continue;
-                }
-
-                $statusCode = $result['status_code'] ?? 0;
-                if ($statusCode < 200 || $statusCode >= 400) {
+                if (! $page['scanned']) {
                     continue;
                 }
 
                 $scanned++;
+                $path = $page['path'];
+                $url  = $page['url'];
                 $scannedPaths[$hostname.'|'.$path] = true;
-                $html     = $result['body'] ?? '';
-                $url      = $result['final_url'] ?? $result['url'];
-                $signals  = $detector->detect($html, $url, $hostname);
 
-                // Check for redirect hijack — final URL pointing off-domain
-                $redirectSignal = $this->detectRedirectHijack($result, $hostname);
-                if ($redirectSignal) {
-                    $signals[] = $redirectSignal;
-                }
-
-                foreach ($signals as $signal) {
+                foreach ($page['signals'] as $signal) {
                     $findings++;
                     try {
                         ['created' => $c, 'updated' => $u, 'alerted' => $a] = $this->upsertFinding(
@@ -195,23 +179,181 @@ class ScanHttpJob extends AbstractSyncJob
     }
 
     /**
-     * Paths to probe per hostname. Homepage always included; high-risk WP
-     * paths added because SQL scanner may miss injected upload-dir pages.
+     * Probe one host and return one entry per page read.
      *
-     * @return list<string>
+     * What is fetched, and why:
+     *  - "/" as Googlebot — what the search index sees.
+     *  - "/" as a phone arriving from Google — the visitor cloakers target.
+     *    The usual judol cloak serves the normal page to anyone typing the URL
+     *    and swaps content (or redirects) only for search traffic. Staff open
+     *    these links from a phone, which is how SLOT777 on umum was spotted.
+     *  - WordPress high-risk paths — only when the homepage is WordPress;
+     *    probing /wp-login.php on a Laravel site just burns the host's quota.
+     *  - A few sitemap URLs — spam-looking slugs first, then the newest.
+     *
+     * @return list<array{path:string, url:string, scanned:bool, skipped:bool, signals:list<array>}>
      */
-    private function pathsForHostname(string $hostname): array
+    private function probeHost(SiteHttpFetcher $fetcher, HtmlSignalDetector $detector, string $hostname): array
     {
-        $paths = ['/'];
+        $pages = [];
 
-        // WordPress-specific high-risk paths (common injection landing pages)
-        $wpPaths = config('nawasara-secscan.http_probe.wp_paths', [
-            '/wp-login.php',
-            '/wp-content/uploads/',
-            '/wp-admin/',
-        ]);
+        $home = $this->readPage($fetcher, $detector, $hostname, '/');
 
-        return array_merge($paths, $wpPaths);
+        if (config('nawasara-secscan.http_probe.cloak_check', true)) {
+            $mobile = $this->readPage(
+                $fetcher, $detector, $hostname, '/',
+                SiteHttpFetcher::UA_MOBILE, SiteHttpFetcher::REFERER_GOOGLE,
+            );
+            $home['signals'] = self::mergeVariants($home, $mobile);
+            $home['scanned'] = $home['scanned'] || $mobile['scanned'];
+            $home['skipped'] = $home['skipped'] && $mobile['skipped'];
+        }
+        $pages[] = $home;
+
+        if (str_contains($home['body'], '/wp-content/') || str_contains($home['body'], '/wp-includes/')) {
+            foreach ((array) config('nawasara-secscan.http_probe.wp_paths', ['/wp-login.php', '/wp-content/uploads/']) as $path) {
+                $pages[] = $this->readPage($fetcher, $detector, $hostname, $path);
+            }
+        }
+
+        $limit = (int) config('nawasara-secscan.http_probe.sitemap_urls', 3);
+        if ($limit > 0) {
+            $sitemap = app(SitemapProbe::class)->discover($hostname, $limit);
+
+            // Recorded as read even when clean, so a sitemap finding closes
+            // itself once the spam slugs are gone (see auto-resolve below).
+            if (($sitemap['sitemap'] ?? null) !== null) {
+                $pages[] = [
+                    'path' => '/sitemap.xml',
+                    'url' => $sitemap['sitemap'],
+                    'scanned' => true,
+                    'skipped' => false,
+                    'body' => '',
+                    'signals' => ($sitemap['spam_count'] ?? 0) > 0 ? [self::sitemapSignal($sitemap)] : [],
+                ];
+            }
+
+            foreach ($sitemap['paths'] ?? [] as $path) {
+                $pages[] = $this->readPage($fetcher, $detector, $hostname, $path);
+            }
+        }
+
+        return $pages;
+    }
+
+    /**
+     * Fetch one page as one visitor type and run the detectors on it.
+     *
+     * @return array{path:string, url:string, scanned:bool, skipped:bool, body:string, signals:list<array>}
+     */
+    private function readPage(
+        SiteHttpFetcher $fetcher,
+        HtmlSignalDetector $detector,
+        string $hostname,
+        string $path,
+        string $ua = SiteHttpFetcher::UA_GOOGLEBOT,
+        ?string $referer = null,
+    ): array {
+        $page = ['path' => $path, 'url' => 'https://'.$hostname.$path, 'scanned' => false, 'skipped' => false, 'body' => '', 'signals' => []];
+
+        $result = $fetcher->fetch($hostname, $path, $ua, true, $referer);
+
+        if ($result === null || ! empty($result['error']) || ($result['is_challenge'] ?? false)) {
+            $page['skipped'] = true;
+
+            return $page;
+        }
+
+        $statusCode = $result['status_code'] ?? 0;
+        if ($statusCode < 200 || $statusCode >= 400) {
+            // Off-domain redirects still matter even though nothing was read.
+            if ($signal = $this->detectRedirectHijack($result, $hostname)) {
+                $page['scanned'] = true;
+                $page['signals'][] = $signal;
+            }
+
+            return $page;
+        }
+
+        $page['scanned'] = true;
+        $page['body'] = (string) ($result['body'] ?? '');
+        $page['url'] = $result['final_url'] ?? $result['url'];
+        $page['signals'] = $detector->detect($page['body'], $page['url'], $hostname);
+
+        if ($signal = $this->detectRedirectHijack($result, $hostname)) {
+            $page['signals'][] = $signal;
+        }
+
+        return $page;
+    }
+
+    /**
+     * Merge the Googlebot and Google-referred-phone readings of one page.
+     *
+     * One signal per threat type (the finding key is host + path + threat), at
+     * the higher score. A signal seen by only ONE visitor type is the cloaking
+     * itself — the page shows a different face depending on who asks — and is
+     * tagged so staff know why a URL that "looks clean" was flagged.
+     *
+     * @param  array{scanned:bool, signals:list<array>}  $bot
+     * @param  array{scanned:bool, signals:list<array>}  $mobile
+     * @return list<array>
+     */
+    public static function mergeVariants(array $bot, array $mobile): array
+    {
+        $byType = [];
+        $seenBy = [];
+
+        foreach (['googlebot' => $bot, 'mobile_google' => $mobile] as $variant => $page) {
+            foreach ($page['signals'] as $signal) {
+                $type = $signal['threat_type'];
+                $seenBy[$type][] = $variant;
+
+                if (! isset($byType[$type]) || $signal['score'] > $byType[$type]['score']) {
+                    $byType[$type] = $signal;
+                }
+            }
+        }
+
+        foreach ($byType as $type => &$signal) {
+            $variants = array_values(array_unique($seenBy[$type]));
+            $signal['evidence']['variants'] = $variants;
+
+            // Only meaningful when both readings succeeded; a failed fetch is
+            // not "the page looked clean to that visitor".
+            if (count($variants) === 1 && $bot['scanned'] && $mobile['scanned']) {
+                $signal['evidence']['cloaking'] = $variants[0];
+            }
+        }
+        unset($signal);
+
+        return array_values($byType);
+    }
+
+    /** Spam slugs listed in the site's own sitemap. */
+    public static function sitemapSignal(array $sitemap): array
+    {
+        $count = (int) $sitemap['spam_count'];
+
+        // Pharma slugs ("jual-obat-aborsi") are a different threat with a
+        // different cleanup audience; anything else here is gambling.
+        $pharma = array_map('strtolower', (array) config('nawasara-secscan.pharma_keywords_strong', []));
+        $isPharma = $sitemap['spam_urls'] !== [] && collect($sitemap['spam_urls'])
+            ->every(fn ($u) => array_intersect($u['keywords'], $pharma) !== []);
+
+        return [
+            'threat_type' => $isPharma ? 'illegal_pharma' : 'judol',
+            // The site itself advertises these URLs to Google — no ambiguity
+            // left about whether the content is there.
+            'score' => min(100, 70 + $count * 5),
+            'evidence' => [
+                'source' => 'http',
+                'url' => $sitemap['sitemap'],
+                'sitemap_spam_count' => $count,
+                'sitemap_total' => (int) $sitemap['total'],
+                'sitemap_spam_urls' => $sitemap['spam_urls'],
+            ],
+        ];
     }
 
     /**

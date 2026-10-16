@@ -96,6 +96,9 @@ class ScanFindings extends Component
             'triage_note' => $this->triageNote ?: null,
         ]);
 
+        // Last open file on that site handled → its site alert resolves.
+        app(\Nawasara\Secscan\Services\FileFindingAlerts::class)->reconcile($finding);
+
         $this->triageId = null;
         $this->dispatch('modal-close:scan-triage-' . $this->agentDbId);
         $this->dispatch('toast', type: 'success', message: 'Finding updated.');

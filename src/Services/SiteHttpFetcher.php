@@ -23,6 +23,10 @@ class SiteHttpFetcher
     // User-Agent strings used in probing.
     public const UA_GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
     public const UA_BROWSER   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+    public const UA_MOBILE    = 'Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
+
+    /** Referer of a visitor arriving from a Google results page. */
+    public const REFERER_GOOGLE = 'https://www.google.com/';
 
     private int $timeoutSeconds;
     private int $delayMs;
@@ -48,12 +52,14 @@ class SiteHttpFetcher
      * @param  string  $path      e.g. "/" or "/wp-login.php"
      * @param  string  $ua        UA_GOOGLEBOT | UA_BROWSER
      * @param  bool    $cacheBust Append ?_nws_t= to bypass CF edge cache
+     * @param  string|null  $referer  Sent on every hop; cloakers key on it
      */
     public function fetch(
         string $hostname,
         string $path = '/',
         string $ua = self::UA_GOOGLEBOT,
         bool $cacheBust = true,
+        ?string $referer = null,
     ): ?array {
         // 1. Backoff check — host had too many failures recently
         if ($this->inCooldown($hostname)) {
@@ -92,12 +98,17 @@ class SiteHttpFetcher
                 return ['url' => $url, 'error' => 'blocked: '.$guard['reason'], 'status_code' => 0];
             }
 
+            $headers = [
+                'User-Agent' => $ua,
+                'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'id-ID,id;q=0.9,en;q=0.8',
+            ];
+            if ($referer !== null) {
+                $headers['Referer'] = $referer;
+            }
+
             $response = $this->pinnedClient($guard)
-                ->withHeaders([
-                    'User-Agent' => $ua,
-                    'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language' => 'id-ID,id;q=0.9,en;q=0.8',
-                ])
+                ->withHeaders($headers)
                 ->timeout($this->timeoutSeconds)
                 ->withoutRedirecting()   // we track redirects manually below
                 ->get($url);
@@ -137,7 +148,7 @@ class SiteHttpFetcher
 
                 try {
                     $current = $this->pinnedClient($hopGuard)
-                        ->withHeaders(['User-Agent' => $ua])
+                        ->withHeaders(array_filter(['User-Agent' => $ua, 'Referer' => $referer]))
                         ->timeout($this->timeoutSeconds)
                         ->withoutRedirecting()
                         ->get($finalUrl);
@@ -187,29 +198,6 @@ class SiteHttpFetcher
         }
     }
 
-    /**
-     * Fetch the same path with both Googlebot and browser UA to detect cloaking.
-     * Returns ['bot' => result, 'browser' => result, 'cloaking_detected' => bool].
-     */
-    public function fetchBoth(string $hostname, string $path = '/'): array
-    {
-        $bot     = $this->fetch($hostname, $path, self::UA_GOOGLEBOT);
-        $browser = $this->fetch($hostname, $path, self::UA_BROWSER, false);
-
-        $cloaking = false;
-        if ($bot && $browser && ! $bot['error'] && ! $browser['error']) {
-            $botLen     = $bot['body_length'] ?? 0;
-            $browserLen = $browser['body_length'] ?? 0;
-            // Size difference > 20% of the larger body is a strong cloaking signal
-            $sizeDiff = abs($botLen - $browserLen);
-            $larger   = max($botLen, $browserLen);
-            if ($larger > 0 && ($sizeDiff / $larger) > 0.20) {
-                $cloaking = true;
-            }
-        }
-
-        return ['bot' => $bot, 'browser' => $browser, 'cloaking_detected' => $cloaking];
-    }
 
     /**
      * Klien HTTP yang memaksa curl memakai alamat yang sudah diperiksa

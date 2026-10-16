@@ -128,7 +128,13 @@
                             'gambling_link_count' => 'Jumlah link ke domain judi',
                             'total_external_domains' => 'Total domain eksternal unik',
                             'foreign_script_title' => 'Judul menggunakan aksara asing',
-                            'cloaking_detected' => 'Cloaking terdeteksi (konten beda UA)',
+                            // Ditulis ScanHttpJob::mergeVariants(): sinyal yang hanya
+                            // terlihat oleh satu jenis pengunjung.
+                            'cloaking' => 'Cloaking — hanya tampil untuk',
+                            'variants' => 'Terlihat oleh',
+                            'sitemap_spam_count' => 'URL spam di sitemap',
+                            'sitemap_total' => 'Total URL di sitemap',
+                            'sitemap_spam_urls' => 'Contoh URL spam di sitemap',
                             'note' => 'Catatan',
                         ];
                     @endphp
