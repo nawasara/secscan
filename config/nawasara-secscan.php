@@ -13,6 +13,17 @@ return [
         'enabled' => env('SECSCAN_SCHEDULER_ENABLED', true),
     ],
 
+    // Pembersihan harian (nawasara-secscan:prune), jam Asia/Jakarta.
+    // 0 = tidak pernah dihapus. Temuan scan yang masih terbuka tidak pernah
+    // dihapus berapa pun umurnya.
+    'prune' => [
+        'enabled' => env('SECSCAN_PRUNE_ENABLED', true),
+        'cron' => env('SECSCAN_PRUNE_CRON', '30 3 * * *'),
+        'heartbeats_days' => (int) env('SECSCAN_PRUNE_HEARTBEATS_DAYS', 14),
+        'incidents_days' => (int) env('SECSCAN_PRUNE_INCIDENTS_DAYS', 365),
+        'closed_findings_days' => (int) env('SECSCAN_PRUNE_CLOSED_FINDINGS_DAYS', 365),
+    ],
+
     // Minutes between scheduled scans (cron is */{interval} so keep ≤ 60).
     'scan_interval' => env('SECSCAN_SCAN_INTERVAL', 60),
 

@@ -38,6 +38,37 @@ class SecscanServiceProvider extends ServiceProvider
         $this->registerAlertRules();
         $this->registerApiScopes();
         $this->registerApiRoutes();
+        $this->registerPrune();
+    }
+
+    /**
+     * Pembersihan heartbeat, insiden, dan temuan tertutup (lihat PruneCommand).
+     *
+     * `$schedule->call()` + Artisan, bukan `$schedule->command()` (AGENTS.md
+     * §7); jam dinding Jakarta karena `app.timezone` bernilai UTC. Tidak ikut
+     * `scheduler.enabled`: mematikan scan tidak boleh ikut membiarkan tabel
+     * tumbuh tanpa batas.
+     */
+    protected function registerPrune(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([\Nawasara\Secscan\Console\PruneCommand::class]);
+
+        $this->app->booted(function () {
+            if (! config('nawasara-secscan.prune.enabled', true)) {
+                return;
+            }
+
+            $this->app->make(Schedule::class)
+                ->call(fn () => \Illuminate\Support\Facades\Artisan::call('nawasara-secscan:prune'))
+                ->name('nawasara-secscan:prune')
+                ->cron((string) config('nawasara-secscan.prune.cron', '30 3 * * *'))
+                ->timezone('Asia/Jakarta')
+                ->withoutOverlapping(60);
+        });
     }
 
     /**
