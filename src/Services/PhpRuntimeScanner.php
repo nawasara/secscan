@@ -69,6 +69,7 @@ class PhpRuntimeScanner
             }
         }
 
+        $inside = $this->insideTargets();
         $seen = [];
         $notPhp = [];
         foreach (array_chunk($allowed, $concurrency) as $chunk) {
@@ -91,7 +92,11 @@ class PhpRuntimeScanner
                     $found = $this->followOnce($response, 'https://'.$host.'/', $timeout);
                 }
 
-                if ($found !== null) {
+                if ($found !== null && isset($inside[$host])) {
+                    // Sudah terbaca dari dalam (WHM atau agen), lengkap dengan
+                    // versinya: baris dari luar hanya menggandakannya.
+                    $seen[] = $host;
+                } elseif ($found !== null) {
                     PhpRuntime::record(PhpRuntime::SOURCE_EXTERNAL, $host, null, $found, $this->levels);
                     $seen[] = $host;
                 } else {
@@ -158,6 +163,34 @@ class PhpRuntimeScanner
         $b = strtolower((string) parse_url($to, PHP_URL_HOST));
 
         return $a !== '' && preg_replace('/^www\./', '', $a) === preg_replace('/^www\./', '', $b);
+    }
+
+    /** @return array<string, int> sasaran yang sudah terbaca dari dalam, sebagai kunci */
+    protected function insideTargets(): array
+    {
+        return PhpRuntime::whereIn('source', [PhpRuntime::SOURCE_WHM, PhpRuntime::SOURCE_AGENT])
+            ->distinct()->pluck('target')->flip()->all();
+    }
+
+    /**
+     * Buang baris "dari luar" untuk situs yang sudah terbaca dari dalam.
+     *
+     * Pindaian luar berjalan lebih dulu, jadi situs yang baru pertama kali
+     * terbaca dari WHM masih punya baris luar dari putaran yang sama. Tanpa
+     * ini setiap situs WHM tampil dua kali, sekali sebagai "tersembunyi"
+     * (dilaporkan 23 Oktober 2026: puskesmassooko dan sooko).
+     *
+     * ⚠️ Daftarnya diambil dulu baru dihapus: MySQL menolak DELETE yang
+     * subquery-nya membaca tabel yang sama (galat 1093).
+     */
+    public function dropExternalDuplicates(): int
+    {
+        $deleted = 0;
+        foreach (array_chunk(array_keys($this->insideTargets()), 500) as $chunk) {
+            $deleted += PhpRuntime::where('source', PhpRuntime::SOURCE_EXTERNAL)->whereIn('target', $chunk)->delete();
+        }
+
+        return $deleted;
     }
 
     /** @return list<string> */
@@ -298,6 +331,8 @@ SH;
             $result[$instance] = ['vhosts' => count($rows), 'via' => $via];
         }
 
+        $this->dropExternalDuplicates();
+
         return $result;
     }
 
@@ -321,8 +356,19 @@ SH;
             return [null, 'api', 'token WHM belum diisi di Vault'];
         }
 
+        // ⚠️ Batas 60 detik bawaan klien WHM terlalu pendek di sini: di Alpine
+        // (100 vhost) panggilan ini dua kali habis waktu tanpa satu byte pun
+        // pada 23 Oktober 2026, padahal 20 menit sebelumnya lancar. Dinaikkan
+        // hanya selama pemindaian ini; fitur WHM lain tetap 60 detik.
+        $previous = config('nawasara-whm.timeout');
+        config(['nawasara-whm.timeout' => 180]);
+
         try {
-            $vhosts = $client->rawJsonApi('php_get_vhost_versions');
+            try {
+                $vhosts = $client->rawJsonApi('php_get_vhost_versions');
+            } catch (\Throwable $e) {
+                return [null, 'api', 'API: '.mb_substr($e->getMessage(), 0, 120)];
+            }
             if ((int) ($vhosts['metadata']['result'] ?? 0) !== 1) {
                 return [null, 'api', 'API: '.mb_substr((string) ($vhosts['metadata']['reason'] ?? 'gagal'), 0, 120)];
             }
@@ -336,20 +382,37 @@ SH;
             foreach ($handlers as $i => $handler) {
                 $params['package-'.($i + 1)] = $handler.'-php-cli';
             }
-            $packages = $params === [] ? [] : $client->rawJsonApi('package_manager_get_package_info', $params);
-        } catch (\Throwable $e) {
-            return [null, 'api', 'API: '.mb_substr($e->getMessage(), 0, 120)];
+
+            // Info paket gagal bukan alasan membuang daftar vhost: pakai versi
+            // terakhir yang diketahui untuk handler yang sama. Versi ea-php
+            // hanya berubah saat server diperbarui.
+            try {
+                $packages = $params === [] ? [] : $client->rawJsonApi('package_manager_get_package_info', $params);
+            } catch (\Throwable $e) {
+                Log::warning('secscan.php_monitor.whm_package_info_failed', [
+                    'instance' => $client->instance(), 'error' => mb_substr($e->getMessage(), 0, 160),
+                ]);
+                $packages = [];
+            }
+        } finally {
+            config(['nawasara-whm.timeout' => $previous]);
         }
 
-        return [self::parseWhmApi($vhosts, $packages), 'whm-api', ''];
+        $known = PhpRuntime::where('source', PhpRuntime::SOURCE_WHM)
+            ->where('origin', (string) $client->instance())
+            ->whereNotNull('php_version')
+            ->pluck('php_version', 'handler')
+            ->all();
+
+        return [self::parseWhmApi($vhosts, $packages, $known), 'whm-api', ''];
     }
 
     /**
      * @return list<array{vhost:string, handler:string, php_version:?string}>
      */
-    public static function parseWhmApi(array $vhosts, array $packages): array
+    public static function parseWhmApi(array $vhosts, array $packages, array $fallback = []): array
     {
-        $versions = [];
+        $versions = $fallback;
         foreach ((array) ($packages['data']['packages'] ?? []) as $pkg) {
             $name = (string) ($pkg['package'] ?? '');
             $installed = (string) ($pkg['version_installed'] ?? '');

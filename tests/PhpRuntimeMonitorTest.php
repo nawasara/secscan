@@ -140,6 +140,16 @@ class PhpRuntimeMonitorTest extends TestCase
         ], $rows);
     }
 
+    /** Alpine 23 Oktober 2026: info paket habis waktu, daftar vhost tetap terpakai. */
+    public function test_versi_terakhir_dipakai_bila_info_paket_gagal(): void
+    {
+        $vhosts = ['data' => ['versions' => [['vhost' => 'sooko.ponorogo.go.id', 'version' => 'ea-php81']]]];
+
+        $rows = PhpRuntimeScanner::parseWhmApi($vhosts, [], ['ea-php81' => '8.1.34']);
+
+        $this->assertSame('8.1.34', $rows[0]['php_version']);
+    }
+
     public function test_keluaran_whm_rusak_menghasilkan_daftar_kosong(): void
     {
         $this->assertSame([], PhpRuntimeScanner::parseWhm('bash: whmapi1: command not found'));
