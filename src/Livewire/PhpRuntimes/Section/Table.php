@@ -15,8 +15,13 @@ use Nawasara\Secscan\Support\PhpPatchLevels;
 use Nawasara\Ui\Livewire\Concerns\HasExport;
 
 /**
- * Inventaris versi PHP di ekosistem. Dibuka pada yang perlu ditindak
- * (rentan dan tidak didukung); yang aman bisa dilihat lewat saringan.
+ * Inventaris versi PHP di ekosistem. Yang perlu ditindak (rentan, lalu tidak
+ * didukung) selalu di urutan teratas.
+ *
+ * ⚠️ Saringan bawaan sengaja KOSONG. Versi pertama membuka halaman dengan
+ * Status = rentan + tidak didukung; begitu saringan itu dihapus, larik
+ * kosong tidak ditulis ke URL, jadi muat ulang (dan dulu juga pindah
+ * halaman) mengembalikan saringan yang sudah dibuang pengguna.
  */
 class Table extends Component
 {
@@ -29,7 +34,7 @@ class Table extends Component
 
     /** @var array<int,string> */
     #[Url]
-    public array $filterStatus = [PhpPatchLevels::VULNERABLE, PhpPatchLevels::EOL];
+    public array $filterStatus = [];
 
     #[Url]
     public string $filterSource = '';
@@ -90,7 +95,7 @@ class Table extends Component
     #[Computed]
     public function hasNarrowing(): bool
     {
-        return $this->search !== '' || $this->filterSource !== '';
+        return $this->search !== '' || $this->filterSource !== '' || $this->filterStatus !== [];
     }
 
     #[Computed]

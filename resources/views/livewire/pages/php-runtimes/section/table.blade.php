@@ -113,14 +113,10 @@
                         @if ($this->hasNarrowing)
                             <x-nawasara-ui::empty-state inline icon="lucide-search-x"
                                 title="Tidak ada yang cocok" description="Ubah kata kunci atau saringannya." />
-                        @elseif (array_sum($this->stats) === 0)
+                        @else
                             <x-nawasara-ui::empty-state inline icon="lucide-scan-search"
                                 title="Belum pernah dipindai"
                                 description="Pemindaian berjalan otomatis tiap pagi. Tekan Pindai Sekarang untuk menjalankannya sekarang." />
-                        @else
-                            <x-nawasara-ui::empty-state inline icon="lucide-shield-check" variant="celebrate"
-                                title="Tidak ada PHP yang perlu ditindak"
-                                description="Semua versi yang terlihat sudah ditambal. Ubah saringan Status untuk melihat semuanya." />
                         @endif
                     </td>
                 </tr>
