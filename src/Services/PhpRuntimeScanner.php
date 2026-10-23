@@ -68,6 +68,7 @@ class PhpRuntimeScanner
         }
 
         $seen = [];
+        $notPhp = [];
         foreach (array_chunk($allowed, $concurrency) as $chunk) {
             $responses = Http::pool(fn (Pool $pool) => array_map(
                 fn ($h) => $pool->as($h)->timeout($timeout)->withoutRedirecting()
@@ -91,13 +92,21 @@ class PhpRuntimeScanner
                 if ($found !== null) {
                     PhpRuntime::record(PhpRuntime::SOURCE_EXTERNAL, $host, null, $found, $this->levels);
                     $seen[] = $host;
+                } else {
+                    $notPhp[] = $host;
                 }
             }
         }
 
-        // Situs yang tidak lagi terlihat ber-PHP (dipindah, dimatikan, atau
-        // berhenti memamerkan dirinya) dibuang hanya bila pemindaian ini
-        // benar-benar berjalan; DNS kosong tidak boleh mengosongkan daftar.
+        // Menjawab tetapi tidak ber-PHP: buang sekarang juga (situs pindah
+        // teknologi, atau baris lama hasil salah deteksi).
+        if ($notPhp !== []) {
+            PhpRuntime::where('source', PhpRuntime::SOURCE_EXTERNAL)->whereIn('target', $notPhp)->delete();
+        }
+
+        // Tidak menjawab: diberi 3 hari, karena situs yang sedang mati
+        // sebentar bukan berarti PHP-nya sudah hilang. DNS kosong tidak boleh
+        // mengosongkan daftar, jadi hanya bila pemindaian benar-benar berjalan.
         if ($allowed !== []) {
             PhpRuntime::where('source', PhpRuntime::SOURCE_EXTERNAL)
                 ->whereNotIn('target', $seen ?: ['-'])
@@ -116,7 +125,7 @@ class PhpRuntimeScanner
         }
 
         $next = OutboundUrlGuard::absolutize($location, $base);
-        if (! OutboundUrlGuard::check($next)['ok']) {
+        if (! self::sameSite($base, $next) || ! OutboundUrlGuard::check($next)['ok']) {
             return null;
         }
 
@@ -132,6 +141,21 @@ class PhpRuntimeScanner
         // Cookie sesi sering dipasang di jawaban redirect pertama, versinya di
         // halaman tujuan: gabungkan keduanya.
         return self::fingerprint(array_merge_recursive($response->headers(), $second->headers()));
+    }
+
+    /**
+     * Redirect hanya diikuti di dalam host yang sama (termasuk www).
+     *
+     * ⚠️ Pemindaian pertama di prod (23 Oktober 2026) mengikuti redirect ke
+     * mana saja: kisara.ponorogo.go.id mengalihkan ke ponorogo.go.id, dan
+     * PHP milik situs tujuan tercatat atas nama kisara (yang Keycloak, Java).
+     */
+    public static function sameSite(string $from, string $to): bool
+    {
+        $a = strtolower((string) parse_url($from, PHP_URL_HOST));
+        $b = strtolower((string) parse_url($to, PHP_URL_HOST));
+
+        return $a !== '' && preg_replace('/^www\./', '', $a) === preg_replace('/^www\./', '', $b);
     }
 
     /** @return list<string> */
@@ -179,6 +203,13 @@ class PhpRuntimeScanner
 
         foreach ($get('Set-Cookie') as $cookie) {
             $name = strtolower(trim(explode('=', $cookie, 2)[0]));
+            // Cookie Cloudflare (CF_Session milik Cloudflare Access, __cf_bm)
+            // dipasang di depan situs apa pun dan cocok dengan pola
+            // *_session; tanpa pengecualian ini aplikasi Node dan Go di
+            // belakang Access ikut tercatat sebagai PHP.
+            if (str_starts_with($name, 'cf_') || str_starts_with($name, '__cf')) {
+                continue;
+            }
             if ($name === 'phpsessid' || $name === 'ci_session' || str_ends_with($name, '_session') || $name === 'xsrf-token') {
                 return ['php_version' => null, 'detected_via' => 'cookie', 'exposes_version' => false];
             }

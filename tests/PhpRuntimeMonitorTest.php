@@ -81,6 +81,25 @@ class PhpRuntimeMonitorTest extends TestCase
         ]));
     }
 
+    /** Uptime Kuma (Node) dan WAGO (Go) di belakang Cloudflare Access, prod 23 Oktober 2026. */
+    public function test_cookie_cloudflare_access_bukan_tanda_php(): void
+    {
+        $this->assertNull(PhpRuntimeScanner::fingerprint(['Set-Cookie' => [
+            'CF_AppSession=343ece7c4d8bd5ab; Path=/; Secure; HttpOnly',
+            'CF_Session=nIuLohNTm8ytVd6g9; Path=/; Secure; HttpOnly',
+            '__cf_bm=abc; path=/',
+        ]]));
+    }
+
+    /** kisara.ponorogo.go.id mengalihkan ke ponorogo.go.id: PHP tujuan bukan milik kisara. */
+    public function test_redirect_hanya_diikuti_di_host_yang_sama(): void
+    {
+        $this->assertTrue(PhpRuntimeScanner::sameSite('https://espj.ponorogo.go.id/', 'https://espj.ponorogo.go.id/login'));
+        $this->assertTrue(PhpRuntimeScanner::sameSite('https://ponorogo.go.id/', 'https://www.ponorogo.go.id/'));
+        $this->assertFalse(PhpRuntimeScanner::sameSite('https://kisara.ponorogo.go.id/', 'https://ponorogo.go.id'));
+        $this->assertFalse(PhpRuntimeScanner::sameSite('https://uptime.ponorogo.go.id/', 'https://kominfopng.cloudflareaccess.com/cdn-cgi/access/login/x'));
+    }
+
     public function test_keluaran_whm_diurai_dan_vhost_bawaan_dibuang(): void
     {
         $output = "VER ea-php81 8.1.34\nVER ea-php83 8.3.36\n---VHOSTS---\n".json_encode(['data' => ['versions' => [
