@@ -258,7 +258,27 @@ class AgentController extends Controller
             'plugins_active'    => 'nullable|array',
             'metrics'           => 'nullable|array',
             'uptime_seconds'    => 'integer|min:0',
+            // Agen v0.15.0+: versi PHP di host, ea-php, dan container.
+            'php_runtimes'           => 'sometimes|array|max:200',
+            'php_runtimes.*.target'  => 'required|string|max:191',
+            'php_runtimes.*.handler' => 'nullable|string|max:64',
+            'php_runtimes.*.version' => 'nullable|string|max:32',
         ]);
+
+        // Hanya bila kuncinya ada: agen lama tidak mengirimnya, dan menganggap
+        // "tidak dikirim" sebagai "tidak ada PHP" akan menghapus barisnya.
+        // Agen yang belum disetujui tidak boleh mengisi inventaris yang dibaca
+        // petugas (audit keamanan 15 Oktober 2026, T1).
+        if ($request->has('php_runtimes') && $agent->isApproved()) {
+            try {
+                (new \Nawasara\Secscan\Services\PhpRuntimeScanner(\Nawasara\Secscan\Support\PhpPatchLevels::fromConfig()))
+                    ->recordAgent($agent->name ?: ('agent-'.$agent->id), $data['php_runtimes'] ?? []);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('secscan.php_monitor.agent_failed', [
+                    'agent_id' => $agent->id, 'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         AgentHeartbeat::create([
             'agent_id'          => $agent->id,

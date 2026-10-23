@@ -9,6 +9,7 @@ use Nawasara\Secscan\Livewire\Findings\Index as FindingsIndex;
 use Nawasara\Secscan\Livewire\Incidents\Index as IncidentsIndex;
 use Nawasara\Secscan\Livewire\IpBlocks\Index as IpBlocksIndex;
 use Nawasara\Secscan\Livewire\IpTimeline\Show as IpTimelineShow;
+use Nawasara\Secscan\Livewire\PhpRuntimes\Index as PhpRuntimesIndex;
 use Nawasara\Secscan\Livewire\Settings\Notification as SettingsNotification;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 
@@ -36,6 +37,10 @@ Route::middleware(['web', 'auth'])->prefix('nawasara-secscan')->group(function (
     Route::get('ip-blocks', IpBlocksIndex::class)
         ->middleware(PermissionMiddleware::using('secscan.ip-block.manage'))
         ->name('nawasara-secscan.ip-blocks');
+
+    Route::get('php-runtimes', PhpRuntimesIndex::class)
+        ->middleware(PermissionMiddleware::using('secscan.view'))
+        ->name('nawasara-secscan.php-runtimes');
 
     Route::get('ip/{ip}', IpTimelineShow::class)
         ->middleware(PermissionMiddleware::using('secscan.view'))

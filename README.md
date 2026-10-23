@@ -26,6 +26,7 @@ alerts via `nawasara/alerting`.
 | Incidents | `/nawasara-secscan/incidents` | Incidents from the agent (SSH brute-force, exploit chain, scanner bot) |
 | Agents | `/nawasara-secscan/agents` | List of installed agents plus detail (scan findings, command queue) |
 | IP Timeline | `/nawasara-secscan/ip/{ip}` | Every incident from one source IP |
+| Versi PHP | `/nawasara-secscan/php-runtimes` | Versi PHP seluruh situs dan server: dari luar, dari server WHM, dan dari agen |
 
 Permissions: `secscan.view`, `secscan.finding.triage`, `secscan.agent.view`,
 `secscan.agent.scan`, `secscan.agent.command`.
@@ -161,6 +162,40 @@ dengan catatan untuk memperbarui agen.
 Yang **masih** belum tertangkap: cloaking berbasis IP Googlebot asli (reverse
 DNS) dan konten yang disisipkan JavaScript sesudah halaman dimuat — yang
 kedua butuh browser headless (lihat Roadmap F4).
+
+### Versi PHP: tiga arah, karena tidak ada satu pun yang melihat semuanya
+
+Lahir dari PHP2Shell (CVE-2026-109618/109619, Oktober 2026). Survei manual
+pertama menemukan e-bmd dan simap di PHP 5.6, smep di 7.4, enam situs
+Himalaya di 8.1 (tak akan pernah ditambal), dan penataanruang di 8.2.30
+(tambalan ada, belum dipasang). Halaman ini mengulang survei itu tiap pagi
+pukul 05.15 WIB (`ScanPhpRuntimesJob`).
+
+| Arah | Melihat | Buta terhadap |
+|---|---|---|
+| Dari luar | Semua hostname A/AAAA/CNAME di DNS Cloudflare | Versi, kecuali situs memasang `X-Powered-By` |
+| Server WHM | Handler PHP tiap vhost cPanel | Server tanpa kunci SSH di Vault |
+| Agen (v0.15.0+) | Host, ea-php, alt-php, container Docker | Host tanpa agen |
+
+Keputusan yang tampak keliru tetapi disengaja:
+
+- **WHM dibaca lewat SSH, bukan API.** Token API WHM di Vault ditolak untuk
+  `php_get_vhost_versions` ("Permission denied", diuji 23 Oktober 2026).
+  Instance tanpa `ssh_key` dilewati dan dicatat di log, bukan dianggap kosong.
+- **Satu peringatan per golongan, bukan per situs.** `secscan.php.vulnerable`
+  (critical) dan `secscan.php.eol` (warning), target tetap `summary`, jeda 1
+  hari. Per situs berarti belasan pesan Telegram tiap pagi untuk masalah yang
+  sama. Keduanya selesai sendiri saat jumlahnya nol.
+- **8.1 tetap "tidak didukung" meski cPanel mungkin menambalnya sendiri.**
+  Tambalan vendor yang tak terlihat dari nomor versi bukan rencana.
+- **Pindaian luar mengikuti satu redirect.** Tanpa itu survei pertama hanya
+  melihat 12 dari 274 hostname: banyak aplikasi langsung mengalihkan ke
+  `/login`, dan cookie sesinya baru muncul di sana.
+- **Hostname yang mengarah ke alamat dalam dilewati** (`OutboundUrlGuard`).
+
+Saat ada CVE PHP baru, perbarui `SECSCAN_PHP_PATCHED` (versi aman pertama per
+cabang, dipisah koma) dan `SECSCAN_PHP_ADVISORY`, lalu tekan **Pindai
+Sekarang**. Status dihitung ulang dari versinya, tanpa migrasi.
 
 ---
 

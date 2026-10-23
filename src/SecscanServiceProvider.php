@@ -275,6 +275,30 @@ class SecscanServiceProvider extends ServiceProvider
             'description' => 'Satu agen memicu terlalu banyak blokir IP dalam satu jam; blokir berikutnya ditahan',
             'subject_template' => '[auto-block] Agen {context.agent} mencapai batas {context.cap} blokir/jam',
         ]));
+
+        // Pemantau versi PHP: satu ringkasan per golongan (ScanPhpRuntimesJob).
+        // Rentan = tambalan ada tetapi belum dipasang, jadi critical. Tidak
+        // didukung = tidak akan pernah ditambal; perbaikannya pindah cabang,
+        // pekerjaan berminggu-minggu, jadi cukup warning yang diulang harian.
+        $phpCooldown = (int) config('nawasara-secscan.php_monitor.alert_cooldown_minutes', 1440);
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => \Nawasara\Secscan\Jobs\ScanPhpRuntimesJob::RULE_VULNERABLE,
+            'severity' => 'critical',
+            'category' => 'security',
+            'cooldown_minutes' => $phpCooldown,
+            'description' => 'Situs atau server memakai versi PHP yang sudah punya tambalan keamanan tetapi belum dipasang',
+            'subject_template' => '[{severity}] {context.count} sasaran memakai PHP rentan ({context.advisory}): {context.sample}',
+        ]));
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => \Nawasara\Secscan\Jobs\ScanPhpRuntimesJob::RULE_EOL,
+            'severity' => 'warning',
+            'category' => 'security',
+            'cooldown_minutes' => $phpCooldown,
+            'description' => 'Situs atau server memakai cabang PHP yang tidak lagi menerima tambalan keamanan',
+            'subject_template' => '[{severity}] {context.count} sasaran memakai PHP yang tidak didukung lagi: {context.sample}',
+        ]));
     }
 
     /**
@@ -382,6 +406,20 @@ class SecscanServiceProvider extends ServiceProvider
                 })
                     ->name('nawasara-secscan:scan-http')
                     ->cron("0 */{$httpHours} * * *")
+                    ->withoutOverlapping(30);
+            }
+
+            // Pemantau versi PHP, sekali sehari sebelum jam kerja.
+            if (config('nawasara-secscan.php_monitor.enabled', true)) {
+                $phpAt = (string) config('nawasara-secscan.php_monitor.run_at', '05:15');
+                if (! preg_match('/^\d{1,2}:\d{2}$/', $phpAt)) {
+                    $phpAt = '05:15';
+                }
+
+                $schedule->call(fn () => \Nawasara\Secscan\Jobs\ScanPhpRuntimesJob::dispatch(triggerSource: 'scheduled'))
+                    ->name('nawasara-secscan:scan-php-runtimes')
+                    ->dailyAt($phpAt)
+                    ->timezone((string) config('nawasara-secscan.php_monitor.timezone', 'Asia/Jakarta'))
                     ->withoutOverlapping(30);
             }
         });

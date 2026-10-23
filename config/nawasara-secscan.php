@@ -143,6 +143,34 @@ return [
     | Probes *.ponorogo.go.id hostnames from CF DNS records with Googlebot UA.
     | Rate-limiting protects OPD sites from being overloaded by the scanner.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Pemantau versi PHP
+    |--------------------------------------------------------------------------
+    | Inventaris versi PHP di seluruh ekosistem dari tiga arah: dipindai dari
+    | luar (hostname DNS Cloudflare), dibaca dari dalam server WHM (SSH dari
+    | Vault), dan dilaporkan nawasara-agent. Lahir dari PHP2Shell
+    | (CVE-2026-109618/109619, Oktober 2026): survei manual pertama menemukan
+    | 3 situs PHP 5.6/7.4 dan 6 situs PHP 8.1 yang tidak akan pernah ditambal.
+    |
+    | `patched` = versi PERTAMA yang aman per cabang. Saat ada CVE PHP baru,
+    | cukup perbarui daftar ini (lewat env tanpa rilis ulang); cabang yang
+    | tidak tercantum dan lebih lama dari semuanya dianggap EOL.
+    */
+    'php_monitor' => [
+        'enabled' => env('SECSCAN_PHP_MONITOR_ENABLED', true),
+        'advisory' => env('SECSCAN_PHP_ADVISORY', 'PHP2Shell (CVE-2026-109618/109619)'),
+        'patched' => array_filter(array_map('trim', explode(',', (string) env(
+            'SECSCAN_PHP_PATCHED',
+            '8.2.35,8.3.36,8.4.27,8.5.12'
+        )))),
+        'run_at' => env('SECSCAN_PHP_MONITOR_AT', '05:15'),
+        'timezone' => 'Asia/Jakarta',
+        'timeout_seconds' => 8,
+        'concurrency' => 20,
+        'alert_cooldown_minutes' => 1440,
+    ],
+
     'http_probe' => [
         'enabled' => env('SECSCAN_HTTP_PROBE_ENABLED', true),
         'scan_interval' => env('SECSCAN_HTTP_SCAN_INTERVAL', 360),  // minutes; default 6 hours

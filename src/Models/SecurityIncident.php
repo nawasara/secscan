@@ -115,6 +115,9 @@ class SecurityIncident extends Model
             '4xx_storm' => 'Banjir Galat 4xx',
             'scanner_bot' => 'Bot Pemindai',
             'webshell_upload' => 'Unggah Webshell',
+            'oversized_body' => 'Kiriman Terlalu Besar',
+            'server_error_storm' => 'Rentetan Galat 500',
+            'php_worker_crash' => 'Worker PHP Tumbang',
             null, '' => '-',
             default => ucfirst(str_replace('_', ' ', $type)),
         };

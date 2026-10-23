@@ -40,6 +40,13 @@ return [
                 'navigate' => true,
             ],
             [
+                'label' => 'Versi PHP',
+                'icon' => 'lucide-file-code',
+                'url' => url($prefix.'/php-runtimes'),
+                'permission' => 'secscan.view',
+                'navigate' => true,
+            ],
+            [
                 'label' => 'Blokir IP',
                 'icon' => 'lucide-shield-ban',
                 'url' => url($prefix.'/ip-blocks'),
