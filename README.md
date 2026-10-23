@@ -174,14 +174,18 @@ pukul 05.15 WIB (`ScanPhpRuntimesJob`).
 | Arah | Melihat | Buta terhadap |
 |---|---|---|
 | Dari luar | Semua hostname A/AAAA/CNAME di DNS Cloudflare | Versi, kecuali situs memasang `X-Powered-By` |
-| Server WHM | Handler PHP tiap vhost cPanel | Server tanpa kunci SSH di Vault |
+| Server WHM | Handler dan versi lengkap PHP tiap vhost cPanel | Server yang token API-nya tanpa ACL `all` dan tanpa kunci SSH |
 | Agen (v0.15.0+) | Host, ea-php, alt-php, container Docker | Host tanpa agen |
 
 Keputusan yang tampak keliru tetapi disengaja:
 
-- **WHM dibaca lewat SSH, bukan API.** Token API WHM di Vault ditolak untuk
-  `php_get_vhost_versions` ("Permission denied", diuji 23 Oktober 2026).
-  Instance tanpa `ssh_key` dilewati dan dicatat di log, bukan dianggap kosong.
+- **WHM lewat API dengan token root ber-ACL `all`, SSH sebagai cadangan.**
+  Token di Vault memang milik root, tetapi ACL-nya dibatasi, dan
+  `php_get_vhost_versions` dijawab "Permission denied" (diuji 23 Oktober
+  2026). Centang **All Features** pada token itu di WHM → Manage API Tokens.
+  Versi lengkapnya diambil dari paket `ea-phpNN-php-cli`
+  (`package_manager_get_package_info`), karena `php_get_installed_versions`
+  hanya memberi nama handler, padahal yang menentukan adalah nomor patch.
 - **Satu peringatan per golongan, bukan per situs.** `secscan.php.vulnerable`
   (critical) dan `secscan.php.eol` (warning), target tetap `summary`, jeda 1
   hari. Per situs berarti belasan pesan Telegram tiap pagi untuk masalah yang

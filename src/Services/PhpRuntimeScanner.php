@@ -32,10 +32,12 @@ use Nawasara\Secscan\Support\PhpPatchLevels;
  *
  * ## Dari dalam WHM
  *
- * Token API WHM di Vault tidak berhak membaca versi PHP (diuji: "Permission
- * denied" untuk php_get_vhost_versions), jadi dibaca lewat SSH root dengan
- * kunci dari Vault (SshConnection). Instance tanpa kunci SSH dilewati dan
- * disebut di hasilnya, bukan dianggap kosong.
+ * Lewat API WHM memakai token root yang sudah ada di Vault, dengan syarat
+ * tokennya ber-ACL "all" (WHM → Manage API Tokens). Token dengan ACL
+ * terbatas dijawab "Permission denied"; untuk server seperti itu SSH root
+ * dengan kunci dari Vault (SshConnection) dipakai sebagai cadangan. Server
+ * yang keduanya gagal dicatat di log beserta alasannya, bukan dianggap
+ * kosong.
  */
 class PhpRuntimeScanner
 {
@@ -253,26 +255,29 @@ SH;
             return $result;
         }
 
-        foreach (app(\Nawasara\Whm\Services\WhmClient::class)->instances() as $instance) {
-            $ssh = app(\Nawasara\Whm\Services\SshConnection::class)->forInstance($instance)->withTimeout(60);
+        $whm = app(\Nawasara\Whm\Services\WhmClient::class);
 
-            if (! $ssh->isConfigured()) {
-                $result[$instance] = ['error' => 'kunci SSH belum diisi di Vault'];
+        foreach ($whm->instances() as $instance) {
+            // API dulu: cukup token root ber-ACL "all" yang sudah ada di Vault.
+            // SSH hanya cadangan untuk server yang tokennya dibatasi.
+            [$rows, $via, $error] = $this->whmRowsViaApi($whm->forInstance($instance));
 
-                continue;
+            if ($rows === null) {
+                $ssh = app(\Nawasara\Whm\Services\SshConnection::class)->forInstance($instance)->withTimeout(60);
+
+                if ($ssh->isConfigured()) {
+                    try {
+                        $rows = self::parseWhm($ssh->exec(self::WHM_SCRIPT));
+                        $via = 'ssh';
+                    } catch (\Throwable $e) {
+                        $error .= '; SSH: '.mb_substr($e->getMessage(), 0, 120);
+                    }
+                }
             }
 
-            try {
-                $rows = self::parseWhm($ssh->exec(self::WHM_SCRIPT));
-            } catch (\Throwable $e) {
-                Log::warning('secscan.php_monitor.whm_failed', ['instance' => $instance, 'error' => $e->getMessage()]);
-                $result[$instance] = ['error' => mb_substr($e->getMessage(), 0, 160)];
-
-                continue;
-            }
-
-            if ($rows === []) {
-                $result[$instance] = ['error' => 'whmapi1 tidak mengembalikan vhost'];
+            if ($rows === null || $rows === []) {
+                Log::warning('secscan.php_monitor.whm_failed', ['instance' => $instance, 'error' => $error]);
+                $result[$instance] = ['error' => $error ?: 'tidak ada vhost'];
 
                 continue;
             }
@@ -281,7 +286,7 @@ SH;
                 PhpRuntime::record(PhpRuntime::SOURCE_WHM, $row['vhost'], $instance, [
                     'handler' => $row['handler'],
                     'php_version' => $row['php_version'],
-                    'detected_via' => 'whmapi1',
+                    'detected_via' => $via,
                 ], $this->levels);
             }
 
@@ -290,10 +295,80 @@ SH;
                 ->whereNotIn('target', array_column($rows, 'vhost'))
                 ->delete();
 
-            $result[$instance] = ['vhosts' => count($rows)];
+            $result[$instance] = ['vhosts' => count($rows), 'via' => $via];
         }
 
         return $result;
+    }
+
+    /**
+     * Handler tiap vhost (php_get_vhost_versions) lalu versi lengkap tiap
+     * ea-php dari paket CLI-nya (package_manager_get_package_info).
+     *
+     * ⚠️ php_get_installed_versions hanya memberi nama handler ("ea-php82"),
+     * padahal yang menentukan rentan atau tidak adalah nomor patch-nya
+     * (8.2.30 vs 8.2.35). Versi paket ea-phpNN-php-cli sama dengan versi PHP
+     * yang dijalankan handler itu ("8.2.35-1+1.1.cpanel").
+     *
+     * Keduanya butuh token ber-ACL "all"; token dengan ACL terbatas dijawab
+     * "Permission denied" dengan HTTP 200, bukan galat HTTP.
+     *
+     * @return array{0: ?list<array{vhost:string, handler:string, php_version:?string}>, 1: string, 2: string}
+     */
+    protected function whmRowsViaApi($client): array
+    {
+        if (! $client->isConfigured()) {
+            return [null, 'api', 'token WHM belum diisi di Vault'];
+        }
+
+        try {
+            $vhosts = $client->rawJsonApi('php_get_vhost_versions');
+            if ((int) ($vhosts['metadata']['result'] ?? 0) !== 1) {
+                return [null, 'api', 'API: '.mb_substr((string) ($vhosts['metadata']['reason'] ?? 'gagal'), 0, 120)];
+            }
+
+            $handlers = array_values(array_unique(array_filter(array_map(
+                fn ($v) => (string) ($v['version'] ?? ''),
+                (array) ($vhosts['data']['versions'] ?? [])
+            ), fn ($h) => preg_match('/^ea-php\d+$/', $h))));
+
+            $params = [];
+            foreach ($handlers as $i => $handler) {
+                $params['package-'.($i + 1)] = $handler.'-php-cli';
+            }
+            $packages = $params === [] ? [] : $client->rawJsonApi('package_manager_get_package_info', $params);
+        } catch (\Throwable $e) {
+            return [null, 'api', 'API: '.mb_substr($e->getMessage(), 0, 120)];
+        }
+
+        return [self::parseWhmApi($vhosts, $packages), 'whm-api', ''];
+    }
+
+    /**
+     * @return list<array{vhost:string, handler:string, php_version:?string}>
+     */
+    public static function parseWhmApi(array $vhosts, array $packages): array
+    {
+        $versions = [];
+        foreach ((array) ($packages['data']['packages'] ?? []) as $pkg) {
+            $name = (string) ($pkg['package'] ?? '');
+            $installed = (string) ($pkg['version_installed'] ?? '');
+            if (preg_match('/^(ea-php\d+)-php-cli$/', $name, $m) && preg_match('/^\d+\.\d+\.\d+/', $installed, $v)) {
+                $versions[$m[1]] = $v[0];
+            }
+        }
+
+        $rows = [];
+        foreach ((array) ($vhosts['data']['versions'] ?? []) as $vhost) {
+            $name = strtolower((string) ($vhost['vhost'] ?? ''));
+            $handler = (string) ($vhost['version'] ?? '');
+            if ($name === '' || preg_match(self::WHM_NOISE, $name)) {
+                continue;
+            }
+            $rows[] = ['vhost' => $name, 'handler' => $handler, 'php_version' => $versions[$handler] ?? null];
+        }
+
+        return $rows;
     }
 
     /** @return list<array{vhost:string, handler:string, php_version:?string}> */

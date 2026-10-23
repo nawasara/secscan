@@ -119,6 +119,27 @@ class PhpRuntimeMonitorTest extends TestCase
         $this->assertNull($rows[2]['php_version']);
     }
 
+    /** Bentuk jawaban API diambil dari Himalaya, 23 Oktober 2026. */
+    public function test_jawaban_api_whm_diurai_dengan_versi_dari_paket_cli(): void
+    {
+        $vhosts = ['metadata' => ['result' => 1], 'data' => ['versions' => [
+            ['vhost' => 'cutikom.ponorogo.go.id', 'version' => 'ea-php81'],
+            ['vhost' => 'sicakep.ponorogo.go.id', 'version' => 'ea-php82'],
+            ['vhost' => 'fe093dd2.cpx.local', 'version' => 'ea-php81'],
+        ]]];
+        $packages = ['data' => ['packages' => [
+            ['package' => 'ea-php81-php-cli', 'version_installed' => '8.1.34-5+12.1.cpanel'],
+            ['package' => 'ea-php82-php-cli', 'version_installed' => '8.2.35-1+1.1.cpanel'],
+        ]]];
+
+        $rows = PhpRuntimeScanner::parseWhmApi($vhosts, $packages);
+
+        $this->assertSame([
+            ['vhost' => 'cutikom.ponorogo.go.id', 'handler' => 'ea-php81', 'php_version' => '8.1.34'],
+            ['vhost' => 'sicakep.ponorogo.go.id', 'handler' => 'ea-php82', 'php_version' => '8.2.35'],
+        ], $rows);
+    }
+
     public function test_keluaran_whm_rusak_menghasilkan_daftar_kosong(): void
     {
         $this->assertSame([], PhpRuntimeScanner::parseWhm('bash: whmapi1: command not found'));
